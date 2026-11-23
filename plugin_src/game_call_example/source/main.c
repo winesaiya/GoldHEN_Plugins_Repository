@@ -1,76 +1,63 @@
-// Game Call Example: Calling game function example.
-
-// Author: icemesh @ https://github.com/icemesh
-// Author: illusion0001 @ https://github.com/illusion0001
-// Repository: https://github.com/GoldHEN/GoldHEN_Plugins_Repository
-
+// Eigenes GoldHEN PS4 Plugin
 #include <stdio.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "plugin_common.h"
 #include <orbis/libkernel.h>
 
-attr_public const char *g_pluginName = "game_call_example";
-attr_public const char *g_pluginDesc = "Calling game function example";
-attr_public const char *g_pluginAuth = "icemesh, illusion";
-attr_public uint32_t g_pluginVersion = 0x00000100; // 1.00
+// HIER DEINEN EIGENEN MENÜ-NAMEN EINTRAGEN:
+attr_public const char *g_pluginName = "MEIN EIGENES MENU";
+attr_public const char *g_pluginDesc = "Custom PS4 Plugin";
+attr_public const char *g_pluginAuth = "winesaiya";
+attr_public uint32_t g_pluginVersion = 0x00000100;
 
 struct proc_info procInfo;
-#define NO_ASLR_ADDR 0x00400000
+
+// Hilfsfunktion für PS4-Benachrichtigung oben links auf dem TV
+void sendNotification(const char* text) {
+    OrbisNotificationRequest req;
+    memset(&req, 0, sizeof(req));
+    req.type = NotificationRequest;
+    req.unk3 = 0;
+    req.useIconImageUri = 1;
+    req.targetId = -1;
+    strcpy(req.iconUri, "cxml://psnotification/tex_icon_system");
+    strncpy(req.message, text, sizeof(req.message) - 1);
+    sceKernelSendNotificationRequest(0, &req, sizeof(req), 0);
+}
 
 void* my_thread(void* args)
 {
-    uint64_t startPtr = procInfo.base_address;
-    // Define game functions with parameters.
-    void (*MyFunc1) (int param_1) = ((void(*) (int param_1)) (startPtr + (0x0224f980 - NO_ASLR_ADDR)));
-    void (*MyFunc2) (const char *char_format, ...) = ((void(*)(const char *char_format, ...)) (startPtr + (0x0224f980 - NO_ASLR_ADDR)));
-    uint32_t boot_wait = 10;
-    final_printf("Sleeping for %u seconds...\n", boot_wait);
-    sleep(boot_wait);
+    // 15 Sekunden warten, bis das Spiel geladen ist
+    sleep(15);
+    
+    // Zeigt deinen eigenen Namen als Pop-up auf der PS4 an!
+    sendNotification("Mein Custom Menu wurde erfolgreich geladen!");
+
     while (true)
     {
-        MyFunc1(2);
-        MyFunc2("Hello from void* my_thread() (msgcon)\n");
-        sceKernelUsleep(33333);
+        sceKernelUsleep(1000000); // 1 Sekunde Pause im Hintergrund
     }
-    scePthreadExit(NULL);
     return NULL;
 }
 
-int32_t attr_public plugin_load(int32_t argc, const char* argv[])
-{
-    if (sys_sdk_proc_info(&procInfo) == 0)
-    {
-        print_proc_info();
-    }
-    else
-    {
-        final_printf("Failed to get process info\n");
-        return 0;
-    }
-    OrbisPthread thread;
-    final_printf("[GoldHEN] %s Plugin Started.\n", g_pluginName);
-    final_printf("[GoldHEN] <%s\\Ver.0x%08x> %s\n", g_pluginName, g_pluginVersion, __func__);
-    final_printf("[GoldHEN] Plugin Author(s): %s\n", g_pluginAuth);
-    scePthreadCreate(&thread, NULL, my_thread, NULL, "my_thread");
-    return 0;
-}
-
-int32_t attr_public plugin_unload(int32_t argc, const char* argv[])
+int32_t attr_module_hidden module_start(size_t argc, const void *args)
 {
     final_printf("[GoldHEN] <%s\\Ver.0x%08x> %s\n", g_pluginName, g_pluginVersion, __func__);
-    final_printf("[GoldHEN] %s Plugin Ended.\n", g_pluginName);
+    if (sys_sdk_proc_info(&procInfo) != 0) {
+        return -1;
+    }
+    ScePthread thread;
+    scePthreadCreate(&thread, NULL, my_thread, NULL, "custom_menu_thread");
     return 0;
 }
 
-s32 attr_module_hidden module_start(s64 argc, const void *args)
+int32_t attr_module_hidden module_stop(size_t argc, const void *args)
 {
     return 0;
 }
 
-s32 attr_module_hidden module_stop(s64 argc, const void *args)
-{
-    return 0;
-}
+
