@@ -6,7 +6,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <sys/mman.h>
 
 #include "plugin_common.h"
 #include <orbis/libkernel.h>
@@ -105,21 +104,31 @@ int Hooked_scePadRead(int handle, OrbisPadData *pData, int num)
     return ret;
 }
 
-bool PatchGameImport(uint64_t baseAddr, size_t searchSize, void *targetFunc, void *hookFunc)
+bool PatchSafeGOT(void *targetFunc, void *hookFunc)
 {
-    if (!targetFunc || !hookFunc || baseAddr == 0) return false;
+    if (!targetFunc || !hookFunc) return false;
     uint64_t target = (uint64_t)targetFunc;
-    uint64_t *ptr = (uint64_t *)baseAddr;
-    size_t count = searchSize / sizeof(uint64_t);
+    uint64_t hook = (uint64_t)hookFunc;
 
-    for (size_t i = 0; i < count; i++)
+    for (int s = 0; s < 4; s++)
     {
-        if (ptr[i] == target)
+        uint64_t segStart = procInfo.segments[s].addr;
+        uint64_t segSize  = procInfo.segments[s].size;
+        if (segStart == 0 || segSize == 0 || segSize > 0x10000000) continue;
+
+        for (uint64_t addr = segStart; addr + 8 <= segStart + segSize; addr += 8)
         {
-            uint64_t pageStart = ((uint64_t)&ptr[i]) & ~0x3FFFULL;
-            mprotect((void *)pageStart, 0x4000, PROT_READ | PROT_WRITE);
-            ptr[i] = (uint64_t)hookFunc;
-            return true;
+            uint64_t val = 0;
+            if (sys_sdk_proc_rw(&val, (void *)addr, sizeof(uint64_t), 0) == 0)
+            {
+                if (val == target)
+                {
+                    if (sys_sdk_proc_rw(&hook, (void *)addr, sizeof(uint64_t), 1) == 0)
+                    {
+                        return true;
+                    }
+                }
+            }
         }
     }
     return false;
@@ -135,8 +144,8 @@ void* my_thread(void* args)
         sceKernelDlsym(padLib, "scePadRead", (void**)&orig_scePadRead);
     }
 
-    bool hookedState = PatchGameImport(procInfo.base_address, 0x4500000, (void*)orig_scePadReadState, (void*)Hooked_scePadReadState);
-    bool hookedRead  = PatchGameImport(procInfo.base_address, 0x4500000, (void*)orig_scePadRead, (void*)Hooked_scePadRead);
+    bool hookedState = PatchSafeGOT((void*)orig_scePadReadState, (void*)Hooked_scePadReadState);
+    bool hookedRead  = PatchSafeGOT((void*)orig_scePadRead, (void*)Hooked_scePadRead);
 
     char *welcome = (char *)calloc(128, 1);
     if (welcome) {
