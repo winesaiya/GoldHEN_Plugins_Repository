@@ -21,24 +21,6 @@ bool menuOpen = false;
 #define BTN_RIGHT 0x00000020
 
 typedef struct {
-    int32_t type;
-    int32_t reqId;
-    int32_t priority;
-    int32_t msgId;
-    int32_t targetId;
-    int32_t userId;
-    int32_t unk1;
-    int32_t unk2;
-    int32_t appId;
-    int32_t errorNum;
-    int32_t unk3;
-    unsigned char useIconImageUri;
-    char message[1024];
-    char iconUri[1024];
-    char unk[1024];
-} OrbisNotificationRequest;
-
-typedef struct {
     uint32_t buttons;
     uint8_t leftStickX;
     uint8_t leftStickY;
