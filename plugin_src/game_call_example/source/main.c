@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <unistd.h>
 #include <pthread.h>
 
 #include "plugin_common.h"
@@ -42,10 +43,23 @@ typedef struct {
 int (*fnPadInit)(void) = NULL;
 int (*fnPadOpen)(int userId, int type, int index, void *param) = NULL;
 int (*fnPadReadState)(int handle, SimplePadData *data) = NULL;
+int (*fnSendNotification)(int messageType, const char *message) = NULL;
+
+void ShowNotification(const char *msg)
+{
+    if (fnSendNotification) {
+        fnSendNotification(222, msg);
+    }
+}
 
 void* my_thread(void* args)
 {
     sleep(15);
+
+    int sysUtilLib = sceKernelLoadStartModule("libSceSysUtil.sprx", 0, NULL, 0, NULL, NULL);
+    if (sysUtilLib > 0) {
+        sceKernelDlsym(sysUtilLib, "sceSysUtilSendSystemNotificationWithText", (void**)&fnSendNotification);
+    }
 
     int padLib = sceKernelLoadStartModule("libScePad.sprx", 0, NULL, 0, NULL, NULL);
     if (padLib > 0) {
@@ -59,6 +73,8 @@ void* my_thread(void* args)
         fnPadInit();
         padHandle = fnPadOpen(0xFF, 0, 0, NULL);
     }
+
+    ShowNotification("Winee Menu Beta geladen! (L1 + Rechts)");
 
     SimplePadData padData;
     memset(&padData, 0, sizeof(padData));
@@ -74,8 +90,10 @@ void* my_thread(void* args)
             {
                 menuOpen = !menuOpen;
                 if (menuOpen) {
+                    ShowNotification("Winee Menu Beta: GEOEFFNET");
                     final_printf("[Winee Menu Beta] GEÖFFNET (L1 + Rechts)\n");
                 } else {
+                    ShowNotification("Winee Menu Beta: GESCHLOSSEN");
                     final_printf("[Winee Menu Beta] GESCHLOSSEN\n");
                 }
                 sceKernelUsleep(300000);
@@ -101,9 +119,3 @@ int32_t attr_module_hidden module_stop(size_t argc, const void *args)
 {
     return 0;
 }
-
-
-
-
-
-
