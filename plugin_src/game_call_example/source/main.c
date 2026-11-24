@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -70,40 +71,43 @@ void ShowNotification(const char *text)
 
 void ShowCurrentMenuOption()
 {
-    char buf;
+    char *buf = (char *)calloc(128, 1);
+    if (!buf) return;
+
     switch (currentOption) {
         case 0:
-            snprintf(buf, sizeof(buf), "[1/10] Godmode: %s", godmode ? "AN" : "AUS");
+            snprintf(buf, 128, "(1/10) Godmode: %s", godmode ? "AN" : "AUS");
             break;
         case 1:
-            snprintf(buf, sizeof(buf), "[2/10] Super Sprung: %s", superJump ? "AN" : "AUS");
+            snprintf(buf, 128, "(2/10) Super Sprung: %s", superJump ? "AN" : "AUS");
             break;
         case 2:
-            snprintf(buf, sizeof(buf), "[3/10] Keine Fahndung: %s", neverWanted ? "AN" : "AUS");
+            snprintf(buf, 128, "(3/10) Keine Fahndung: %s", neverWanted ? "AN" : "AUS");
             break;
         case 3:
-            snprintf(buf, sizeof(buf), "[4/10] Teleport: Wegpunkt");
+            snprintf(buf, 128, "(4/10) Teleport: Wegpunkt");
             break;
         case 4:
-            snprintf(buf, sizeof(buf), "[5/10] Teleport: Mount Chiliad");
+            snprintf(buf, 128, "(5/10) Teleport: Mount Chiliad");
             break;
         case 5:
-            snprintf(buf, sizeof(buf), "[6/10] Teleport: Flughafen LS");
+            snprintf(buf, 128, "(6/10) Teleport: Flughafen LS");
             break;
         case 6:
-            snprintf(buf, sizeof(buf), "[7/10] Geld +10.000.000$");
+            snprintf(buf, 128, "(7/10) Geld +10.000.000$");
             break;
         case 7:
-            snprintf(buf, sizeof(buf), "[8/10] Alle Waffen geben");
+            snprintf(buf, 128, "(8/10) Alle Waffen geben");
             break;
         case 8:
-            snprintf(buf, sizeof(buf), "[9/10] Fahrzeug: Zentorno spawnen");
+            snprintf(buf, 128, "(9/10) Fahrzeug: Zentorno spawnen");
             break;
         case 9:
-            snprintf(buf, sizeof(buf), "[10/10] Men\xC3\xBC schliessen");
+            snprintf(buf, 128, "(10/10) Men\xC3\xBC schliessen");
             break;
     }
     ShowNotification(buf);
+    free(buf);
 }
 
 void* my_thread(void* args)
@@ -132,7 +136,7 @@ void* my_thread(void* args)
         padHandle = fnPadOpen(userId, 0, 0, NULL);
     }
 
-    ShowNotification("Welcome to WineBetamen\xC3\xBC");
+    ShowNotification("Welcome to WineBetamen\xC3\xBC by Winesaiya");
 
     SimplePadData padData;
     memset(&padData, 0, sizeof(padData));
