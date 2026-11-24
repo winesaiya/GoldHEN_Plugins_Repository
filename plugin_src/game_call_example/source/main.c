@@ -99,8 +99,8 @@ int Hooked_scePadReadState(int handle, OrbisPadData *pData)
 int Hooked_scePadRead(int handle, OrbisPadData *pData, int num)
 {
     int ret = orig_scePadRead ? orig_scePadRead(handle, pData, num) : -1;
-    if (ret > 0 && pData && pData.connected) {
-        g_gameButtons = pData.buttons;
+    if (ret > 0 && pData && pData->connected) {
+        g_gameButtons = pData->buttons;
     }
     return ret;
 }
