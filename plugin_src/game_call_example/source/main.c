@@ -9,6 +9,7 @@
 
 #include "plugin_common.h"
 #include <orbis/libkernel.h>
+#include <orbis/Pad.h>
 
 attr_public const char *g_pluginName = "WineBetamenü";
 attr_public const char *g_pluginDesc = "Custom PS4 Plugin";
@@ -25,37 +26,9 @@ bool neverWanted = false;
 
 #define TOTAL_OPTIONS 10
 
-#define BTN_UP     0x00000010
-#define BTN_RIGHT  0x00000020
-#define BTN_DOWN   0x00000040
-#define BTN_LEFT   0x00000080
-#define BTN_CROSS  0x00004000
-#define BTN_SQUARE 0x00008000
+uint64_t lastInputTime = 0;
 
-typedef struct {
-    uint32_t buttons;
-    uint8_t leftStickX;
-    uint8_t leftStickY;
-    uint8_t rightStickX;
-    uint8_t rightStickY;
-    uint8_t analogL2;
-    uint8_t analogR2;
-    uint8_t padding;
-    uint8_t orientation;
-    uint8_t acceleration;
-    uint8_t angularVelocity;
-    uint8_t touchData;
-    bool connected;
-    uint64_t timestamp;
-    uint8_t ext;
-    uint8_t count;
-    uint8_t unknown;
-} SimplePadData;
-
-int (*fnPadInit)(void) = NULL;
-int (*fnPadOpen)(int userId, int type, int index, void *param) = NULL;
-int (*fnPadReadState)(int handle, SimplePadData *data) = NULL;
-int (*fnGetInitialUser)(int *userId) = NULL;
+Detour Detour_scePadReadState;
 
 void ShowNotification(const char *text)
 {
@@ -110,75 +83,49 @@ void ShowCurrentMenuOption()
     free(buf);
 }
 
-void* my_thread(void* args)
+int scePadReadState_Hook(int handle, OrbisPadData *pData)
 {
-    sleep(55);
+    int ret = Detour_Execute(&Detour_scePadReadState, int (*)(int, OrbisPadData *), handle, pData);
 
-    int userId = 0xFF;
-    int userLib = sceKernelLoadStartModule("libSceUserService.sprx", 0, NULL, 0, NULL, NULL);
-    if (userLib > 0) {
-        sceKernelDlsym(userLib, "sceUserServiceGetInitialUser", (void**)&fnGetInitialUser);
-        if (fnGetInitialUser) {
-            fnGetInitialUser(&userId);
-        }
-    }
-
-    int padLib = sceKernelLoadStartModule("libScePad.sprx", 0, NULL, 0, NULL, NULL);
-    if (padLib > 0) {
-        sceKernelDlsym(padLib, "scePadInit", (void**)&fnPadInit);
-        sceKernelDlsym(padLib, "scePadOpen", (void**)&fnPadOpen);
-        sceKernelDlsym(padLib, "scePadReadState", (void**)&fnPadReadState);
-    }
-
-    int padHandle = -1;
-    if (fnPadInit && fnPadOpen) {
-        fnPadInit();
-        padHandle = fnPadOpen(userId, 0, 0, NULL);
-    }
-
-    ShowNotification("Welcome to WineBetamen\xC3\xBC by Winesaiya");
-
-    SimplePadData padData;
-    memset(&padData, 0, sizeof(padData));
-
-    while (true)
+    if (ret == 0 && pData && pData->connected)
     {
-        if (padHandle >= 0 && fnPadReadState && fnPadReadState(padHandle, &padData) == 0)
+        uint64_t now = sceKernelGetProcessTime();
+        if (now - lastInputTime > 250000)
         {
-            bool leftPressed   = (padData.buttons & BTN_LEFT);
-            bool squarePressed = (padData.buttons & BTN_SQUARE);
-            bool upPressed     = (padData.buttons & BTN_UP);
-            bool downPressed   = (padData.buttons & BTN_DOWN);
-            bool crossPressed  = (padData.buttons & BTN_CROSS);
+            bool leftPressed   = (pData->buttons & ORBIS_PAD_BUTTON_LEFT);
+            bool squarePressed = (pData->buttons & ORBIS_PAD_BUTTON_SQUARE);
+            bool upPressed     = (pData->buttons & ORBIS_PAD_BUTTON_UP);
+            bool downPressed   = (pData->buttons & ORBIS_PAD_BUTTON_DOWN);
+            bool crossPressed  = (pData->buttons & ORBIS_PAD_BUTTON_CROSS);
 
             if (leftPressed && squarePressed)
             {
+                lastInputTime = now;
                 menuOpen = !menuOpen;
                 if (menuOpen) {
                     ShowNotification("=== WINEBETAMEN\xC3\x9C ===");
-                    sceKernelUsleep(250000);
                     ShowCurrentMenuOption();
                 } else {
                     ShowNotification("WineBetamen\xC3\xBC: GESCHLOSSEN");
                 }
-                sceKernelUsleep(300000);
             }
             else if (menuOpen)
             {
                 if (downPressed)
                 {
+                    lastInputTime = now;
                     currentOption = (currentOption + 1) % TOTAL_OPTIONS;
                     ShowCurrentMenuOption();
-                    sceKernelUsleep(220000);
                 }
                 else if (upPressed)
                 {
+                    lastInputTime = now;
                     currentOption = (currentOption - 1 + TOTAL_OPTIONS) % TOTAL_OPTIONS;
                     ShowCurrentMenuOption();
-                    sceKernelUsleep(220000);
                 }
                 else if (crossPressed)
                 {
+                    lastInputTime = now;
                     if (currentOption == 0) {
                         godmode = !godmode;
                         ShowCurrentMenuOption();
@@ -203,15 +150,18 @@ void* my_thread(void* args)
                     } else if (currentOption == 9) {
                         menuOpen = false;
                         ShowNotification("WineBetamen\xC3\xBC: GESCHLOSSEN");
-                        sceKernelUsleep(300000);
-                        continue;
                     }
-                    sceKernelUsleep(250000);
                 }
             }
         }
-        sceKernelUsleep(16666);
     }
+    return ret;
+}
+
+void* my_thread(void* args)
+{
+    sleep(10);
+    ShowNotification("Welcome to WineBetamen\xC3\xBC by Winesaiya (Links + Viereck)");
     return NULL;
 }
 
@@ -220,6 +170,17 @@ int32_t attr_module_hidden module_start(size_t argc, const void *args)
     if (sys_sdk_proc_info(&procInfo) != 0) {
         return -1;
     }
+
+    int padLib = sceKernelLoadStartModule("libScePad.sprx", 0, NULL, 0, NULL, NULL);
+    void *fnPadReadState = NULL;
+    if (padLib > 0) {
+        sceKernelDlsym(padLib, "scePadReadState", &fnPadReadState);
+        if (fnPadReadState) {
+            Detour_Construct(&Detour_scePadReadState);
+            Detour_DetourFunction(&Detour_scePadReadState, fnPadReadState, scePadReadState_Hook);
+        }
+    }
+
     pthread_t thread;
     pthread_create(&thread, NULL, my_thread, NULL);
     return 0;
@@ -227,5 +188,6 @@ int32_t attr_module_hidden module_start(size_t argc, const void *args)
 
 int32_t attr_module_hidden module_stop(size_t argc, const void *args)
 {
+    Detour_Destroy(&Detour_scePadReadState);
     return 0;
 }
