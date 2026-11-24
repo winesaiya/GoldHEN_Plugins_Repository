@@ -26,10 +26,7 @@ bool neverWanted = false;
 
 #define TOTAL_OPTIONS 11
 
-int (*fnPadInit)(void) = NULL;
-int (*fnPadOpen)(int userId, int type, int index, void *param) = NULL;
 int (*fnPadReadState)(int handle, OrbisPadData *data) = NULL;
-int (*fnGetInitialUser)(int *userId) = NULL;
 
 void ShowNotification(const char *text)
 {
@@ -91,29 +88,9 @@ void* my_thread(void* args)
 {
     sleep(10);
 
-    int userId = 0xFF;
-    int userLib = sceKernelLoadStartModule("libSceUserService.sprx", 0, NULL, 0, NULL, NULL);
-    if (userLib > 0) {
-        sceKernelDlsym(userLib, "sceUserServiceGetInitialUser", (void**)&fnGetInitialUser);
-        if (fnGetInitialUser) {
-            fnGetInitialUser(&userId);
-        }
-    }
-
     int padLib = sceKernelLoadStartModule("libScePad.sprx", 0, NULL, 0, NULL, NULL);
     if (padLib > 0) {
-        sceKernelDlsym(padLib, "scePadInit", (void**)&fnPadInit);
-        sceKernelDlsym(padLib, "scePadOpen", (void**)&fnPadOpen);
         sceKernelDlsym(padLib, "scePadReadState", (void**)&fnPadReadState);
-    }
-
-    int padHandle = -1;
-    if (fnPadInit && fnPadOpen) {
-        fnPadInit();
-        padHandle = fnPadOpen(userId, 0, 0, NULL);
-        if (padHandle < 0) {
-            padHandle = fnPadOpen(userId, 1, 0, NULL);
-        }
     }
 
     ShowNotification("Welcome to WineBetamen\xC3\xBC by Winesaiya (Links + Viereck)");
@@ -123,72 +100,84 @@ void* my_thread(void* args)
 
     while (true)
     {
-        if (padHandle >= 0 && fnPadReadState && fnPadReadState(padHandle, &padData) == 0)
+        if (fnPadReadState)
         {
-            bool leftPressed   = (padData.buttons & ORBIS_PAD_BUTTON_LEFT);
-            bool squarePressed = (padData.buttons & ORBIS_PAD_BUTTON_SQUARE);
-            bool upPressed     = (padData.buttons & ORBIS_PAD_BUTTON_UP);
-            bool downPressed   = (padData.buttons & ORBIS_PAD_BUTTON_DOWN);
-            bool crossPressed  = (padData.buttons & ORBIS_PAD_BUTTON_CROSS);
-
-            if (leftPressed && squarePressed)
+            uint32_t combinedButtons = 0;
+            for (int h = 0; h < 16; h++)
             {
-                menuOpen = !menuOpen;
-                if (menuOpen) {
-                    ShowNotification("=== WINEBETAMEN\xC3\x9C ===");
-                    sceKernelUsleep(250000);
-                    ShowCurrentMenuOption();
-                } else {
-                    ShowNotification("WineBetamen\xC3\xBC: GESCHLOSSEN");
+                if (fnPadReadState(h, &padData) == 0 && padData.connected)
+                {
+                    combinedButtons |= padData.buttons;
                 }
-                sceKernelUsleep(300000);
             }
-            else if (menuOpen)
+
+            if (combinedButtons != 0)
             {
-                if (downPressed)
+                bool leftPressed   = (combinedButtons & ORBIS_PAD_BUTTON_LEFT);
+                bool squarePressed = (combinedButtons & ORBIS_PAD_BUTTON_SQUARE);
+                bool upPressed     = (combinedButtons & ORBIS_PAD_BUTTON_UP);
+                bool downPressed   = (combinedButtons & ORBIS_PAD_BUTTON_DOWN);
+                bool crossPressed  = (combinedButtons & ORBIS_PAD_BUTTON_CROSS);
+
+                if (leftPressed && squarePressed)
                 {
-                    currentOption = (currentOption + 1) % TOTAL_OPTIONS;
-                    ShowCurrentMenuOption();
-                    sceKernelUsleep(220000);
-                }
-                else if (upPressed)
-                {
-                    currentOption = (currentOption - 1 + TOTAL_OPTIONS) % TOTAL_OPTIONS;
-                    ShowCurrentMenuOption();
-                    sceKernelUsleep(220000);
-                }
-                else if (crossPressed)
-                {
-                    if (currentOption == 0) {
-                        godmode = !godmode;
+                    menuOpen = !menuOpen;
+                    if (menuOpen) {
+                        ShowNotification("=== WINEBETAMEN\xC3\x9C ===");
+                        sceKernelUsleep(250000);
                         ShowCurrentMenuOption();
-                    } else if (currentOption == 1) {
-                        superJump = !superJump;
-                        ShowCurrentMenuOption();
-                    } else if (currentOption == 2) {
-                        neverWanted = !neverWanted;
-                        ShowCurrentMenuOption();
-                    } else if (currentOption == 3) {
-                        ShowNotification("Teleportiert zum Wegpunkt! (Test)");
-                    } else if (currentOption == 4) {
-                        ShowNotification("Teleportiert zum Mount Chiliad! (Test)");
-                    } else if (currentOption == 5) {
-                        ShowNotification("Teleportiert zum Flughafen LS! (Test)");
-                    } else if (currentOption == 6) {
-                        ShowNotification("+10.000.000$ hinzugefuegt! (Test)");
-                    } else if (currentOption == 7) {
-                        ShowNotification("Rank auf 999 gesetzt! (Test)");
-                    } else if (currentOption == 8) {
-                        ShowNotification("Alle Waffen erhalten! (Test)");
-                    } else if (currentOption == 9) {
-                        ShowNotification("Zentorno gespawnt! (Test)");
-                    } else if (currentOption == 10) {
-                        menuOpen = false;
+                    } else {
                         ShowNotification("WineBetamen\xC3\xBC: GESCHLOSSEN");
-                        sceKernelUsleep(300000);
-                        continue;
                     }
-                    sceKernelUsleep(250000);
+                    sceKernelUsleep(300000);
+                }
+                else if (menuOpen)
+                {
+                    if (downPressed)
+                    {
+                        currentOption = (currentOption + 1) % TOTAL_OPTIONS;
+                        ShowCurrentMenuOption();
+                        sceKernelUsleep(220000);
+                    }
+                    else if (upPressed)
+                    {
+                        currentOption = (currentOption - 1 + TOTAL_OPTIONS) % TOTAL_OPTIONS;
+                        ShowCurrentMenuOption();
+                        sceKernelUsleep(220000);
+                    }
+                    else if (crossPressed)
+                    {
+                        if (currentOption == 0) {
+                            godmode = !godmode;
+                            ShowCurrentMenuOption();
+                        } else if (currentOption == 1) {
+                            superJump = !superJump;
+                            ShowCurrentMenuOption();
+                        } else if (currentOption == 2) {
+                            neverWanted = !neverWanted;
+                            ShowCurrentMenuOption();
+                        } else if (currentOption == 3) {
+                            ShowNotification("Teleportiert zum Wegpunkt! (Test)");
+                        } else if (currentOption == 4) {
+                            ShowNotification("Teleportiert zum Mount Chiliad! (Test)");
+                        } else if (currentOption == 5) {
+                            ShowNotification("Teleportiert zum Flughafen LS! (Test)");
+                        } else if (currentOption == 6) {
+                            ShowNotification("+10.000.000$ hinzugefuegt! (Test)");
+                        } else if (currentOption == 7) {
+                            ShowNotification("Rank auf 999 gesetzt! (Test)");
+                        } else if (currentOption == 8) {
+                            ShowNotification("Alle Waffen erhalten! (Test)");
+                        } else if (currentOption == 9) {
+                            ShowNotification("Zentorno gespawnt! (Test)");
+                        } else if (currentOption == 10) {
+                            menuOpen = false;
+                            ShowNotification("WineBetamen\xC3\xBC: GESCHLOSSEN");
+                            sceKernelUsleep(300000);
+                            continue;
+                        }
+                        sceKernelUsleep(250000);
+                    }
                 }
             }
         }
