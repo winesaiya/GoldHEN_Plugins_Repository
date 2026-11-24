@@ -28,23 +28,83 @@ volatile uint32_t g_gameButtons = 0;
 int (*orig_scePadReadState)(int handle, OrbisPadData *pData) = NULL;
 int (*orig_scePadRead)(int handle, OrbisPadData *pData, int num) = NULL;
 
-typedef void (*fnDrawRect_t)(float x, float y, float w, float h, int r, int g, int b, int a);
-typedef void (*fnSetTextFont_t)(int font);
-typedef void (*fnSetTextScale_t)(float s1, float s2);
-typedef void (*fnSetTextColour_t)(int r, int g, int b, int a);
-typedef void (*fnBeginText_t)(const char *type);
-typedef void (*fnAddTextStr_t)(const char *text);
-typedef void (*fnEndText_t)(float x, float y, int p2);
+// RAGE scrNativeCallContext Struktur fuer PS4 GTA V
+typedef struct {
+    void *ReturnValue;
+    uint32_t ArgCount;
+    uint32_t Pad1;
+    void *Args;
+    uint32_t DataCount;
+    uint32_t Pad2;
+    uint8_t Space;
+} scrNativeCallContext;
 
-fnDrawRect_t      GTA_DRAW_RECT = NULL;
-fnSetTextFont_t   GTA_SET_TEXT_FONT = NULL;
-fnSetTextScale_t  GTA_SET_TEXT_SCALE = NULL;
-fnSetTextColour_t GTA_SET_TEXT_COLOUR = NULL;
-fnBeginText_t     GTA_BEGIN_TEXT = NULL;
-fnAddTextStr_t    GTA_ADD_TEXT_STR = NULL;
-fnEndText_t       GTA_END_TEXT = NULL;
+typedef void (*RageNativeHandler_t)(scrNativeCallContext *ctx);
 
-Detour Detour_IsDlcPresent;
+uint64_t g_gameBase = 0;
+Detour Detour_DrawRect;
+bool g_isDrawingOurMenu = false;
+
+uint32_t FloatToU32(float f)
+{
+    uint32_t u = 0;
+    memcpy(&u, &f, sizeof(uint32_t));
+    return u;
+}
+
+void CallNative(uint64_t offset, uint32_t argCount, uint64_t *args)
+{
+    if (!g_gameBase) return;
+    scrNativeCallContext ctx;
+    uint64_t retVal = 0;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.ReturnValue = &retVal;
+    ctx.ArgCount = argCount;
+    ctx.Args = args;
+
+    if (offset == 0xDCCAC0 && Detour_DrawRect.StubPtr) {
+        RageNativeHandler_t orig = (RageNativeHandler_t)Detour_DrawRect.StubPtr;
+        orig(&ctx);
+    } else {
+        RageNativeHandler_t fn = (RageNativeHandler_t)(g_gameBase + offset);
+        fn(&ctx);
+    }
+}
+
+void GTA_DrawRect(float x, float y, float w, float h, int r, int g, int b, int a)
+{
+    uint64_t args;
+    args = FloatToU32(x);
+    args = FloatToU32(y);
+    args = FloatToU32(w);
+    args = FloatToU32(h);
+    args = (uint64_t)r;
+    args = (uint64_t)g;
+    args = (uint64_t)b;
+    args = (uint64_t)a;
+    CallNative(0xDCCAC0, 8, args);
+}
+
+void GTA_DrawText(const char *text, float x, float y, float scale, int font, int r, int g, int b, int a)
+{
+    uint64_t aFont = { (uint64_t)font };
+    CallNative(0xDE19F0, 1, aFont);
+
+    uint64_t aScale = { FloatToU32(scale), FloatToU32(scale) };
+    CallNative(0xDE1890, 2, aScale);
+
+    uint64_t aCol = { (uint64_t)r, (uint64_t)g, (uint64_t)b, (uint64_t)a };
+    CallNative(0xDE18F0, 4, aCol);
+
+    uint64_t aBeg = { (uint64_t)"STRING" };
+    CallNative(0xDE0690, 1, aBeg);
+
+    uint64_t aStr = { (uint64_t)text };
+    CallNative(0xDE08F0, 1, aStr);
+
+    uint64_t aEnd = { FloatToU32(x), FloatToU32(y), 0 };
+    CallNative(0xDE06C0, 3, aEnd);
+}
 
 int GetOptionCount(int menu)
 {
@@ -55,20 +115,10 @@ int GetOptionCount(int menu)
     return 1;
 }
 
-void DrawInGameText(const char *text, float x, float y, float scale, int font, int r, int g, int b, int a)
-{
-    if (!GTA_SET_TEXT_FONT || !GTA_SET_TEXT_SCALE || !GTA_SET_TEXT_COLOUR || !GTA_BEGIN_TEXT || !GTA_ADD_TEXT_STR || !GTA_END_TEXT) return;
-    GTA_SET_TEXT_FONT(font);
-    GTA_SET_TEXT_SCALE(scale, scale);
-    GTA_SET_TEXT_COLOUR(r, g, b, a);
-    GTA_BEGIN_TEXT("STRING");
-    GTA_ADD_TEXT_STR(text);
-    GTA_END_TEXT(x, y, 0);
-}
-
 void RenderWinesaiyaInGame()
 {
-    if (!menuOpen || !GTA_DRAW_RECT) return;
+    if (!menuOpen || g_isDrawingOurMenu) return;
+    g_isDrawingOurMenu = true;
 
     float menuX = 0.83f;
     float menuW = 0.23f;
@@ -80,29 +130,34 @@ void RenderWinesaiyaInGame()
     int total     = GetOptionCount(currentMenu);
     float totalH  = headerH + subH + (total * rowH);
 
-    GTA_DRAW_RECT(menuX, curY + (totalH * 0.5f), menuW + 0.005f, totalH + 0.007f, 57, 255, 20, 255);
-    GTA_DRAW_RECT(menuX, curY + (headerH * 0.5f), menuW, headerH, 57, 255, 20, 255);
-    DrawInGameText("WINESAIYA", menuX - (menuW * 0.42f), curY + 0.015f, 0.72f, 1, 10, 10, 10, 255);
+    // Neon-gruener Rahmen
+    GTA_DrawRect(menuX, curY + (totalH * 0.5f), menuW + 0.005f, totalH + 0.007f, 57, 255, 20, 255);
+
+    // 1. Header-Banner (Neon-Gruen + schwarze Schrift WINESAIYA)
+    GTA_DrawRect(menuX, curY + (headerH * 0.5f), menuW, headerH, 57, 255, 20, 255);
+    GTA_DrawText("WINESAIYA", menuX - (menuW * 0.42f), curY + 0.015f, 0.72f, 1, 10, 10, 10, 255);
     curY += headerH;
 
-    GTA_DRAW_RECT(menuX, curY + (subH * 0.5f), menuW, subH, 8, 8, 8, 245);
+    // 2. Subheader (Schwarz + neon-gruene Kategorie & Zaehler)
+    GTA_DrawRect(menuX, curY + (subH * 0.5f), menuW, subH, 8, 8, 8, 245);
     const char *cat = (currentMenu == 1) ? "SPIELER" : (currentMenu == 2) ? "TELEPORT" : (currentMenu == 3) ? "GELD & RANK" : (currentMenu == 4) ? "WAFFEN" : (currentMenu == 5) ? "FAHRZEUGE" : "HAUPTMENU";
-    DrawInGameText(cat, menuX - (menuW * 0.46f), curY + 0.005f, 0.36f, 4, 57, 255, 20, 255);
+    GTA_DrawText(cat, menuX - (menuW * 0.46f), curY + 0.005f, 0.36f, 4, 57, 255, 20, 255);
 
     char *cnt = (char *)calloc(24, 1);
     if (cnt) {
         snprintf(cnt, 24, "%d / %d", currentOption + 1, total);
-        DrawInGameText(cnt, menuX + (menuW * 0.30f), curY + 0.005f, 0.36f, 4, 57, 255, 20, 255);
+        GTA_DrawText(cnt, menuX + (menuW * 0.30f), curY + 0.005f, 0.36f, 4, 57, 255, 20, 255);
         free(cnt);
     }
     curY += subH;
 
+    // 3. Optionen (Schwarzer Hintergrund, weisse Schrift, neon-gruener Auswahlbalken)
     for (int i = 0; i < total; i++) {
         bool sel = (i == currentOption);
         float rowMidY = curY + (rowH * 0.5f);
 
-        if (sel) GTA_DRAW_RECT(menuX, rowMidY, menuW, rowH, 57, 255, 20, 245);
-        else GTA_DRAW_RECT(menuX, rowMidY, menuW, rowH, 12, 12, 12, 225);
+        if (sel) GTA_DrawRect(menuX, rowMidY, menuW, rowH, 57, 255, 20, 245);
+        else GTA_DrawRect(menuX, rowMidY, menuW, rowH, 12, 12, 12, 225);
 
         int tr = sel ? 10 : 255;
         int tg = sel ? 10 : 255;
@@ -126,22 +181,30 @@ void RenderWinesaiyaInGame()
         } else if (currentMenu == 4) lbl = "Alle Waffen geben";
         else lbl = "Zentorno spawnen";
 
-        DrawInGameText(lbl, menuX - (menuW * 0.46f), curY + 0.006f, 0.37f, 4, tr, tg, tb, 255);
-        if (st && st[0] != '\0') {
+        GTA_DrawText(lbl, menuX - (menuW * 0.46f), curY + 0.006f, 0.37f, 4, tr, tg, tb, 255);
+        if (st && st != '\0') {
             int sr = sel ? 10 : (strstr(st, "AN") ? 57 : 255);
             int sg = sel ? 10 : 255;
             int sb = sel ? 10 : (strstr(st, "AN") ? 20 : 255);
-            DrawInGameText(st, menuX + (menuW * 0.31f), curY + 0.006f, 0.37f, 4, sr, sg, sb, 255);
+            GTA_DrawText(st, menuX + (menuW * 0.31f), curY + 0.006f, 0.37f, 4, sr, sg, sb, 255);
         }
         curY += rowH;
     }
+
+    g_isDrawingOurMenu = false;
 }
 
-bool Hooked_IsDlcPresent(uint32_t dlcHash)
+void Hooked_DrawRect(scrNativeCallContext *ctx)
 {
-    RenderWinesaiyaInGame();
-    bool (*orig)(uint32_t) = (bool (*)(uint32_t))Detour_IsDlcPresent.StubPtr;
-    return orig ? orig(dlcHash) : false;
+    RageNativeHandler_t orig = (RageNativeHandler_t)Detour_DrawRect.StubPtr;
+    if (orig) orig(ctx);
+
+    static uint64_t lastDrawTick = 0;
+    uint64_t now = sceKernelGetProcessTime();
+    if (now - lastDrawTick > 12000) {
+        lastDrawTick = now;
+        RenderWinesaiyaInGame();
+    }
 }
 
 void ShowPS4Notification(const char *text)
@@ -214,17 +277,9 @@ void* my_thread(void* args)
 
     sleep(35);
 
-    uint64_t base = procInfo.base_address;
-    GTA_DRAW_RECT       = (fnDrawRect_t)(base + 0xDCCAC0);
-    GTA_SET_TEXT_SCALE  = (fnSetTextScale_t)(base + 0xDE1890);
-    GTA_SET_TEXT_COLOUR = (fnSetTextColour_t)(base + 0xDE18F0);
-    GTA_SET_TEXT_FONT   = (fnSetTextFont_t)(base + 0xDE19F0);
-    GTA_BEGIN_TEXT      = (fnBeginText_t)(base + 0xDE0690);
-    GTA_END_TEXT        = (fnEndText_t)(base + 0xDE06C0);
-    GTA_ADD_TEXT_STR    = (fnAddTextStr_t)(base + 0xDE08F0);
-
-    Detour_Construct(&Detour_IsDlcPresent, 0);
-    Detour_DetourFunction(&Detour_IsDlcPresent, base + 0xDD2B80, (void*)Hooked_IsDlcPresent);
+    g_gameBase = procInfo.base_address;
+    Detour_Construct(&Detour_DrawRect, 0);
+    Detour_DetourFunction(&Detour_DrawRect, g_gameBase + 0xDCCAC0, (void*)Hooked_DrawRect);
 
     ShowPS4Notification("Welcome to Winesaiya!\nDr\xC3\xBC""cke Rechte Pfeiltaste + Viereck zum \xC3\x96""ffnen.");
 
@@ -258,7 +313,7 @@ void* my_thread(void* args)
                         else ShowPS4Notification("[WINESAIYA] Set Rank: 999 (Test)");
                     } else if (currentMenu == 4) ShowPS4Notification("[WINESAIYA] Alle Waffen erhalten (Test)");
                     else if (currentMenu == 5) ShowPS4Notification("[WINESAIYA] Zentorno gespawnt (Test)");
-                    sceKernelUsleep(250000);
+                           sceKernelUsleep(250000);
                 }
             }
         }
@@ -279,3 +334,8 @@ int32_t attr_module_hidden module_stop(size_t argc, const void *args)
 {
     return 0;
 }
+     
+                
+            
+        
+    
