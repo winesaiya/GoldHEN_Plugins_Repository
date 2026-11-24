@@ -28,7 +28,6 @@ volatile uint32_t g_gameButtons = 0;
 int (*orig_scePadReadState)(int handle, OrbisPadData *pData) = NULL;
 int (*orig_scePadRead)(int handle, OrbisPadData *pData, int num) = NULL;
 
-// GTA V 1.57 In-Game Grafik-Natives
 typedef void (*fnDrawRect_t)(float x, float y, float w, float h, int r, int g, int b, int a);
 typedef void (*fnSetTextFont_t)(int font);
 typedef void (*fnSetTextScale_t)(float s1, float s2);
@@ -81,15 +80,11 @@ void RenderWinesaiyaInGame()
     int total     = GetOptionCount(currentMenu);
     float totalH  = headerH + subH + (total * rowH);
 
-    // Neon-gruener Aussenrahmen
     GTA_DRAW_RECT(menuX, curY + (totalH * 0.5f), menuW + 0.005f, totalH + 0.007f, 57, 255, 20, 255);
-
-    // 1. Header-Banner (Leuchtendes Neon-Gruen + schwarze Schrift WINESAIYA)
     GTA_DRAW_RECT(menuX, curY + (headerH * 0.5f), menuW, headerH, 57, 255, 20, 255);
     DrawInGameText("WINESAIYA", menuX - (menuW * 0.42f), curY + 0.015f, 0.72f, 1, 10, 10, 10, 255);
     curY += headerH;
 
-    // 2. Subheader (Tiefschwarz + neon-gruene Kategorie & Zaehler)
     GTA_DRAW_RECT(menuX, curY + (subH * 0.5f), menuW, subH, 8, 8, 8, 245);
     const char *cat = (currentMenu == 1) ? "SPIELER" : (currentMenu == 2) ? "TELEPORT" : (currentMenu == 3) ? "GELD & RANK" : (currentMenu == 4) ? "WAFFEN" : (currentMenu == 5) ? "FAHRZEUGE" : "HAUPTMENU";
     DrawInGameText(cat, menuX - (menuW * 0.46f), curY + 0.005f, 0.36f, 4, 57, 255, 20, 255);
@@ -102,16 +97,12 @@ void RenderWinesaiyaInGame()
     }
     curY += subH;
 
-    // 3. Zeilen (Schwarzer Hintergrund, weisse Schrift, neon-gruener Auswahlbalken)
     for (int i = 0; i < total; i++) {
         bool sel = (i == currentOption);
         float rowMidY = curY + (rowH * 0.5f);
 
-        if (sel) {
-            GTA_DRAW_RECT(menuX, rowMidY, menuW, rowH, 57, 255, 20, 245);
-        } else {
-            GTA_DRAW_RECT(menuX, rowMidY, menuW, rowH, 12, 12, 12, 225);
-        }
+        if (sel) GTA_DRAW_RECT(menuX, rowMidY, menuW, rowH, 57, 255, 20, 245);
+        else GTA_DRAW_RECT(menuX, rowMidY, menuW, rowH, 12, 12, 12, 225);
 
         int tr = sel ? 10 : 255;
         int tg = sel ? 10 : 255;
@@ -138,7 +129,7 @@ void RenderWinesaiyaInGame()
         DrawInGameText(lbl, menuX - (menuW * 0.46f), curY + 0.006f, 0.37f, 4, tr, tg, tb, 255);
         if (st != '\0') {
             int sr = sel ? 10 : (strstr(st, "AN") ? 57 : 255);
-            int sg = sel ? 10 : (strstr(st, "AN") ? 255 : 255);
+            int sg = sel ? 10 : 255;
             int sb = sel ? 10 : (strstr(st, "AN") ? 20 : 255);
             DrawInGameText(st, menuX + (menuW * 0.31f), curY + 0.006f, 0.37f, 4, sr, sg, sb, 255);
         }
@@ -221,7 +212,6 @@ void* my_thread(void* args)
     sleep(2);
     ShowPS4Notification("Winesaiya geladen!");
 
-    // Warte, bis GTA V 1.57 im Story-Modus geladen ist
     sleep(35);
 
     uint64_t base = procInfo.base_address;
@@ -233,7 +223,7 @@ void* my_thread(void* args)
     GTA_END_TEXT        = (fnEndText_t)(base + 0xDE06C0);
     GTA_ADD_TEXT_STR    = (fnAddTextStr_t)(base + 0xDE08F0);
 
-    Detour_Construct(&Detour_IsDlcPresent);
+    Detour_Construct(&Detour_IsDlcPresent, DETOUR_MODE_RELATIVE);
     Detour_DetourFunction(&Detour_IsDlcPresent, base + 0xDD2B80, (void*)Hooked_IsDlcPresent);
 
     ShowPS4Notification("Welcome to Winesaiya!\nDr\xC3\xBC""cke Rechte Pfeiltaste + Viereck zum \xC3\x96""ffnen.");
@@ -255,3 +245,37 @@ void* my_thread(void* args)
                     sceKernelUsleep(250000);
                 } else if (btns & ORBIS_PAD_BUTTON_CROSS) {
                     if (currentMenu == 0) { currentMenu = currentOption + 1; currentOption = 0; }
+                    else if (currentMenu == 1) {
+                        if (currentOption == 0) godmode = !godmode;
+                        else if (currentOption == 1) superJump = !superJump;
+                        else neverWanted = !neverWanted;
+                    } else if (currentMenu == 2) {
+                        if (currentOption == 0) ShowPS4Notification("[WINESAIYA] Teleport: Wegpunkt (Test)");
+                        else if (currentOption == 1) ShowPS4Notification("[WINESAIYA] Teleport: Mount Chiliad (Test)");
+                        else ShowPS4Notification("[WINESAIYA] Teleport: Flughafen LS (Test)");
+                    } else if (currentMenu == 3) {
+                        if (currentOption == 0) ShowPS4Notification("[WINESAIYA] Geld +10.000.000$ (Test)");
+                        else ShowPS4Notification("[WINESAIYA] Set Rank: 999 (Test)");
+                    } else if (currentMenu == 4) ShowPS4Notification("[WINESAIYA] Alle Waffen erhalten (Test)");
+                    else if (currentMenu == 5) ShowPS4Notification("[WINESAIYA] Zentorno gespawnt (Test)");
+                    sceKernelUsleep(250000);
+                }
+            }
+        }
+        sceKernelUsleep(16666);
+    }
+    return NULL;
+}
+
+int32_t attr_module_hidden module_start(size_t argc, const void *args)
+{
+    if (sys_sdk_proc_info(&procInfo) != 0) return -1;
+    pthread_t thread;
+    pthread_create(&thread, NULL, my_thread, NULL);
+    return 0;
+}
+
+int32_t attr_module_hidden module_stop(size_t argc, const void *args)
+{
+    return 0;
+}
