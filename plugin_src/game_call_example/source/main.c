@@ -25,6 +25,7 @@ bool superJump = false;
 bool neverWanted = false;
 
 volatile uint32_t g_gameButtons = 0;
+volatile bool g_inGameReady = false;
 int (*orig_scePadReadState)(int handle, OrbisPadData *pData) = NULL;
 int (*orig_scePadRead)(int handle, OrbisPadData *pData, int num) = NULL;
 
@@ -35,13 +36,13 @@ typedef struct {
     void *Args;
     uint32_t DataCount;
     uint32_t Pad2;
-    uint8_t Space[192];
+    uint8_t Space;
 } scrNativeCallContext;
 
-typedef void (*RageNativeHandler_t)(scrNativeCallContext *ctx);
+typedef int64_t (*RageNativeFn_t)(scrNativeCallContext *ctx);
 
 uintptr_t g_ebootBase = 0;
-Detour Detour_DrawRect;
+Detour Detour_PlayerPed;
 bool g_isDrawingOurMenu = false;
 
 uint32_t FloatToU32(float f)
@@ -67,13 +68,8 @@ void CallNative9(uint64_t offset, uint32_t argCount, uint64_t a0, uint64_t a1, u
     ctx.ArgCount = argCount;
     ctx.Args = argBuf;
 
-    if (offset == 0x9CCAC0 && Detour_DrawRect.StubPtr) {
-        RageNativeHandler_t orig = (RageNativeHandler_t)Detour_DrawRect.StubPtr;
-        orig(&ctx);
-    } else {
-        RageNativeHandler_t fn = (RageNativeHandler_t)(g_ebootBase + offset);
-        fn(&ctx);
-    }
+    RageNativeFn_t fn = (RageNativeFn_t)(g_ebootBase + offset);
+    fn(&ctx);
     free(argBuf);
 }
 
@@ -180,17 +176,19 @@ void RenderWinesaiyaInGame()
     g_isDrawingOurMenu = false;
 }
 
-void Hooked_DrawRect(scrNativeCallContext *ctx)
+int64_t Hooked_GetPlayerPed(scrNativeCallContext *ctx)
 {
-    RageNativeHandler_t orig = (RageNativeHandler_t)Detour_DrawRect.StubPtr;
-    if (orig) orig(ctx);
+    g_inGameReady = true;
 
     static uint64_t lastDrawTick = 0;
     uint64_t now = sceKernelGetProcessTime();
-    if (now - lastDrawTick > 12000) {
+    if (now - lastDrawTick > 14000) {
         lastDrawTick = now;
         RenderWinesaiyaInGame();
     }
+
+    RageNativeFn_t orig = (RageNativeFn_t)Detour_PlayerPed.StubPtr;
+    return orig ? orig(ctx) : 0;
 }
 void ShowPS4Notification(const char *text)
 {
@@ -253,7 +251,7 @@ bool ResolveEbootBase()
     info.size = sizeof(info);
     if (sceKernelGetModuleInfo(0, &info) != 0) return false;
     if (info.segmentCount == 0) return false;
-    g_ebootBase = (uintptr_t)info.segmentInfo[0].address;
+    g_ebootBase = (uintptr_t)info.segmentInfo.address;
     return (g_ebootBase != 0);
 }
 
@@ -272,15 +270,18 @@ void* my_thread(void* args)
 
     ShowPS4Notification("Winesaiya geladen!");
 
-    sleep(35);
+    sleep(15);
 
     if (ResolveEbootBase()) {
-        Detour_Construct(&Detour_DrawRect, 0);
-        Detour_DetourFunction(&Detour_DrawRect, g_ebootBase + 0x9CCAC0, (void*)Hooked_DrawRect);
-        ShowPS4Notification("Welcome to Winesaiya!\nDr\xC3\xBC""cke Rechte Pfeiltaste + Viereck zum \xC3\x96""ffnen.");
-    } else {
-        ShowPS4Notification("[WINESAIYA] Base-Fehler!");
+        Detour_Construct(&Detour_PlayerPed, 0);
+        Detour_DetourFunction(&Detour_PlayerPed, g_ebootBase + 0xAA9310, (void*)Hooked_GetPlayerPed);
     }
+
+    while (!g_inGameReady) {
+        sceKernelUsleep(200000);
+    }
+    sleep(2);
+    ShowPS4Notification("Welcome to Winesaiya!\nDr\xC3\xBC""cke Rechte Pfeiltaste + Viereck zum \xC3\x96""ffnen.");
 
     while (true) {
         uint32_t btns = g_gameButtons;
