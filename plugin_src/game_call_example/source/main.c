@@ -21,6 +21,24 @@ bool menuOpen = false;
 #define BTN_RIGHT 0x00000020
 
 typedef struct {
+    int32_t type;
+    int32_t reqId;
+    int32_t priority;
+    int32_t msgId;
+    int32_t targetId;
+    int32_t userId;
+    int32_t unk1;
+    int32_t unk2;
+    int32_t appId;
+    int32_t errorNum;
+    int32_t unk3;
+    unsigned char useIconImageUri;
+    char message[1024];
+    char iconUri[1024];
+    char unk[1024];
+} OrbisNotificationRequest;
+
+typedef struct {
     uint32_t buttons;
     uint8_t leftStickX;
     uint8_t leftStickY;
@@ -43,23 +61,22 @@ typedef struct {
 int (*fnPadInit)(void) = NULL;
 int (*fnPadOpen)(int userId, int type, int index, void *param) = NULL;
 int (*fnPadReadState)(int handle, SimplePadData *data) = NULL;
-int (*fnSendNotification)(int messageType, const char *message) = NULL;
 
-void ShowNotification(const char *msg)
+void ShowNotification(const char *text)
 {
-    if (fnSendNotification) {
-        fnSendNotification(222, msg);
-    }
+    OrbisNotificationRequest req;
+    memset(&req, 0, sizeof(req));
+    req.type = 0;
+    req.unk3 = 0;
+    req.useIconImageUri = 0;
+    req.targetId = -1;
+    snprintf(req.message, sizeof(req.message), "%s", text);
+    sceKernelSendNotificationRequest(0, &req, sizeof(req), 0);
 }
 
 void* my_thread(void* args)
 {
     sleep(15);
-
-    int sysUtilLib = sceKernelLoadStartModule("libSceSysUtil.sprx", 0, NULL, 0, NULL, NULL);
-    if (sysUtilLib > 0) {
-        sceKernelDlsym(sysUtilLib, "sceSysUtilSendSystemNotificationWithText", (void**)&fnSendNotification);
-    }
 
     int padLib = sceKernelLoadStartModule("libScePad.sprx", 0, NULL, 0, NULL, NULL);
     if (padLib > 0) {
@@ -91,10 +108,8 @@ void* my_thread(void* args)
                 menuOpen = !menuOpen;
                 if (menuOpen) {
                     ShowNotification("Winee Menu Beta: GEOEFFNET");
-                    final_printf("[Winee Menu Beta] GEÖFFNET (L1 + Rechts)\n");
                 } else {
                     ShowNotification("Winee Menu Beta: GESCHLOSSEN");
-                    final_printf("[Winee Menu Beta] GESCHLOSSEN\n");
                 }
                 sceKernelUsleep(300000);
             }
@@ -106,7 +121,6 @@ void* my_thread(void* args)
 
 int32_t attr_module_hidden module_start(size_t argc, const void *args)
 {
-    final_printf("[GoldHEN] <%s\\Ver.0x%08x> %s\n", g_pluginName, g_pluginVersion, __func__);
     if (sys_sdk_proc_info(&procInfo) != 0) {
         return -1;
     }
