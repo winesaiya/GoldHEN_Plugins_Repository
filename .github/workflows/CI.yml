@@ -31,16 +31,16 @@ jobs:
         ref: clang-14
         path: mxml
 
+    - name: Checkout OpenOrbis Toolchain
+      uses: actions/checkout@main
+      with:
+        repository: OpenOrbis/OpenOrbis-PS4-Toolchain
+        path: OpenOrbis
+
     - name: Setup variables
       run: |
         sudo apt-get update && sudo apt-get install -y llvm lld wget
         echo "OO_PS4_TOOLCHAIN=$GITHUB_WORKSPACE/OpenOrbis/PS4Toolchain" >> $GITHUB_ENV
-
-    - name: Download OpenOrbis Toolchain
-      run: |
-        mkdir -p OpenOrbis
-        wget -q https://github.com -O toolchain.zip
-        unzip -q toolchain.zip -d OpenOrbis
 
     - name: Install mini xml
       working-directory: mxml/ps4
