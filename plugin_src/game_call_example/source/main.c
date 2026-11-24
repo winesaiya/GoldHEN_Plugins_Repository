@@ -32,11 +32,14 @@ int (*orig_scePadRead)(int handle, OrbisPadData *pData, int num) = NULL;
 typedef struct {
     void *ReturnValue;
     uint32_t ArgCount;
+   typedef struct {
+    void *ReturnValue;
+    uint32_t ArgCount;
     uint32_t Pad1;
     void *Args;
     uint32_t DataCount;
     uint32_t Pad2;
-    uint8_t Space;
+    uint8_t Space[64];
 } scrNativeCallContext;
 
 typedef void (*RageNativeHandler_t)(scrNativeCallContext *ctx);
@@ -52,15 +55,20 @@ uint32_t FloatToU32(float f)
     return u;
 }
 
-void CallNative(uint64_t offset, uint32_t argCount, uint64_t *args)
+void CallNative8(uint64_t offset, uint32_t argCount, uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5, uint64_t a6, uint64_t a7)
 {
     if (!g_gameBase) return;
+    uint64_t *argBuf = (uint64_t *)calloc(8, sizeof(uint64_t));
+    if (!argBuf) return;
+    argBuf[0] = a0; argBuf[1] = a1; argBuf[2] = a2; argBuf[3] = a3;
+    argBuf[4] = a4; argBuf[5] = a5; argBuf[6] = a6; argBuf[7] = a7;
+
     scrNativeCallContext ctx;
     uint64_t retVal = 0;
     memset(&ctx, 0, sizeof(ctx));
     ctx.ReturnValue = &retVal;
     ctx.ArgCount = argCount;
-    ctx.Args = args;
+    ctx.Args = argBuf;
 
     if (offset == 0xDCCAC0 && Detour_DrawRect.StubPtr) {
         RageNativeHandler_t orig = (RageNativeHandler_t)Detour_DrawRect.StubPtr;
@@ -69,45 +77,24 @@ void CallNative(uint64_t offset, uint32_t argCount, uint64_t *args)
         RageNativeHandler_t fn = (RageNativeHandler_t)(g_gameBase + offset);
         fn(&ctx);
     }
+    free(argBuf);
 }
 
 void GTA_DrawRect(float x, float y, float w, float h, int r, int g, int b, int a)
 {
-    uint64_t args;
-    args = FloatToU32(x);
-    args = FloatToU32(y);
-    args = FloatToU32(w);
-    args = FloatToU32(h);
-    args = (uint64_t)r;
-    args = (uint64_t)g;
-    args = (uint64_t)b;
-    args = (uint64_t)a;
-    CallNative(0xDCCAC0, 8, args);
+    CallNative8(0xDCCAC0, 8, FloatToU32(x), FloatToU32(y), FloatToU32(w), FloatToU32(h), (uint64_t)r, (uint64_t)g, (uint64_t)b, (uint64_t)a);
 }
 
 void GTA_DrawText(const char *text, float x, float y, float scale, int font, int r, int g, int b, int a)
 {
-    uint64_t aFont = { (uint64_t)font };
-    CallNative(0xDE19F0, 1, aFont);
-
-    uint64_t aScale = { FloatToU32(scale), FloatToU32(scale) };
-    CallNative(0xDE1890, 2, aScale);
-
-    uint64_t aCol = { (uint64_t)r, (uint64_t)g, (uint64_t)b, (uint64_t)a };
-    CallNative(0xDE18F0, 4, aCol);
-
-    uint64_t aBeg = { (uint64_t)"STRING" };
-    CallNative(0xDE0690, 1, aBeg);
-
-    uint64_t aStr = { (uint64_t)text };
-    CallNative(0xDE08F0, 1, aStr);
-
-    uint64_t aEnd = { FloatToU32(x), FloatToU32(y), 0 };
-    CallNative(0xDE06C0, 3, aEnd);
+    CallNative8(0xDE19F0, 1, (uint64_t)font, 0, 0, 0, 0, 0, 0, 0);
+    CallNative8(0xDE1890, 2, FloatToU32(scale), FloatToU32(scale), 0, 0, 0, 0, 0, 0);
+    CallNative8(0xDE18F0, 4, (uint64_t)r, (uint64_t)g, (uint64_t)b, (uint64_t)a, 0, 0, 0, 0);
+    CallNative8(0xDE0690, 1, (uint64_t)"STRING", 0, 0, 0, 0, 0, 0, 0);
+    CallNative8(0xDE08F0, 1, (uint64_t)text, 0, 0, 0, 0, 0, 0, 0);
+    CallNative8(0xDE06C0, 3, FloatToU32(x), FloatToU32(y), 0, 0, 0, 0, 0, 0);
 }
 
-int GetOptionCount(int menu)
-{
     if (menu == 0) return 5;
     if (menu == 1) return 3;
     if (menu == 2) return 3;
