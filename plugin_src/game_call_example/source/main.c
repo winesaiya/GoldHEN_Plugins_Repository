@@ -28,18 +28,14 @@ volatile uint32_t g_gameButtons = 0;
 int (*orig_scePadReadState)(int handle, OrbisPadData *pData) = NULL;
 int (*orig_scePadRead)(int handle, OrbisPadData *pData, int num) = NULL;
 
-// RAGE scrNativeCallContext Struktur fuer PS4 GTA V
 typedef struct {
-    void *ReturnValue;
-    uint32_t ArgCount;
-   typedef struct {
     void *ReturnValue;
     uint32_t ArgCount;
     uint32_t Pad1;
     void *Args;
     uint32_t DataCount;
     uint32_t Pad2;
-    uint8_t Space[64];
+    uint8_t Space;
 } scrNativeCallContext;
 
 typedef void (*RageNativeHandler_t)(scrNativeCallContext *ctx);
@@ -60,8 +56,8 @@ void CallNative8(uint64_t offset, uint32_t argCount, uint64_t a0, uint64_t a1, u
     if (!g_gameBase) return;
     uint64_t *argBuf = (uint64_t *)calloc(8, sizeof(uint64_t));
     if (!argBuf) return;
-    argBuf[0] = a0; argBuf[1] = a1; argBuf[2] = a2; argBuf[3] = a3;
-    argBuf[4] = a4; argBuf[5] = a5; argBuf[6] = a6; argBuf[7] = a7;
+    *(argBuf + 0) = a0; *(argBuf + 1) = a1; *(argBuf + 2) = a2; *(argBuf + 3) = a3;
+    *(argBuf + 4) = a4; *(argBuf + 5) = a5; *(argBuf + 6) = a6; *(argBuf + 7) = a7;
 
     scrNativeCallContext ctx;
     uint64_t retVal = 0;
@@ -95,6 +91,8 @@ void GTA_DrawText(const char *text, float x, float y, float scale, int font, int
     CallNative8(0xDE06C0, 3, FloatToU32(x), FloatToU32(y), 0, 0, 0, 0, 0, 0);
 }
 
+int GetOptionCount(int menu)
+{
     if (menu == 0) return 5;
     if (menu == 1) return 3;
     if (menu == 2) return 3;
@@ -117,15 +115,11 @@ void RenderWinesaiyaInGame()
     int total     = GetOptionCount(currentMenu);
     float totalH  = headerH + subH + (total * rowH);
 
-    // Neon-gruener Rahmen
     GTA_DrawRect(menuX, curY + (totalH * 0.5f), menuW + 0.005f, totalH + 0.007f, 57, 255, 20, 255);
-
-    // 1. Header-Banner (Neon-Gruen + schwarze Schrift WINESAIYA)
     GTA_DrawRect(menuX, curY + (headerH * 0.5f), menuW, headerH, 57, 255, 20, 255);
     GTA_DrawText("WINESAIYA", menuX - (menuW * 0.42f), curY + 0.015f, 0.72f, 1, 10, 10, 10, 255);
     curY += headerH;
 
-    // 2. Subheader (Schwarz + neon-gruene Kategorie & Zaehler)
     GTA_DrawRect(menuX, curY + (subH * 0.5f), menuW, subH, 8, 8, 8, 245);
     const char *cat = (currentMenu == 1) ? "SPIELER" : (currentMenu == 2) ? "TELEPORT" : (currentMenu == 3) ? "GELD & RANK" : (currentMenu == 4) ? "WAFFEN" : (currentMenu == 5) ? "FAHRZEUGE" : "HAUPTMENU";
     GTA_DrawText(cat, menuX - (menuW * 0.46f), curY + 0.005f, 0.36f, 4, 57, 255, 20, 255);
@@ -138,7 +132,6 @@ void RenderWinesaiyaInGame()
     }
     curY += subH;
 
-    // 3. Optionen (Schwarzer Hintergrund, weisse Schrift, neon-gruener Auswahlbalken)
     for (int i = 0; i < total; i++) {
         bool sel = (i == currentOption);
         float rowMidY = curY + (rowH * 0.5f);
@@ -169,7 +162,7 @@ void RenderWinesaiyaInGame()
         else lbl = "Zentorno spawnen";
 
         GTA_DrawText(lbl, menuX - (menuW * 0.46f), curY + 0.006f, 0.37f, 4, tr, tg, tb, 255);
-        if (st && st != '\0') {
+        if (st && st[0] != '\0') {
             int sr = sel ? 10 : (strstr(st, "AN") ? 57 : 255);
             int sg = sel ? 10 : 255;
             int sb = sel ? 10 : (strstr(st, "AN") ? 20 : 255);
@@ -193,7 +186,6 @@ void Hooked_DrawRect(scrNativeCallContext *ctx)
         RenderWinesaiyaInGame();
     }
 }
-
 void ShowPS4Notification(const char *text)
 {
     OrbisNotificationRequest req;
@@ -300,7 +292,7 @@ void* my_thread(void* args)
                         else ShowPS4Notification("[WINESAIYA] Set Rank: 999 (Test)");
                     } else if (currentMenu == 4) ShowPS4Notification("[WINESAIYA] Alle Waffen erhalten (Test)");
                     else if (currentMenu == 5) ShowPS4Notification("[WINESAIYA] Zentorno gespawnt (Test)");
-                           sceKernelUsleep(250000);
+                    sceKernelUsleep(250000);
                 }
             }
         }
@@ -321,8 +313,3 @@ int32_t attr_module_hidden module_stop(size_t argc, const void *args)
 {
     return 0;
 }
-     
-                
-            
-        
-    
