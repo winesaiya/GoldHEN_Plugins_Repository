@@ -31,6 +31,12 @@ jobs:
         ref: clang-14
         path: mxml
 
+    - name: Checkout oosdk_libraries
+      uses: actions/checkout@main
+      with:
+        repository: bucanero/oosdk_libraries
+        path: oosdk_libraries
+
     - name: Setup variables
       run: |
         sudo apt-get update && sudo apt-get install -y llvm lld
@@ -46,7 +52,7 @@ jobs:
     - name: Install mini xml
       working-directory: mxml/ps4
       run: |
-        wget https://githubusercontent.com -O $OO_PS4_TOOLCHAIN/build_rules.mk
+        cp $GITHUB_WORKSPACE/oosdk_libraries/build_rules.mk $OO_PS4_TOOLCHAIN/build_rules.mk
         make install PRX_BUILD=1
 
     - name: Export path to SDK
