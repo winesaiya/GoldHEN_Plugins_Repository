@@ -24,11 +24,12 @@ bool godmode = false;
 bool superJump = false;
 bool neverWanted = false;
 
-#define TOTAL_OPTIONS 10
+#define TOTAL_OPTIONS 11
 
 uint64_t lastInputTime = 0;
 
 Detour Detour_scePadReadState;
+int (*orig_scePadReadState)(int handle, OrbisPadData *pData) = NULL;
 
 void ShowNotification(const char *text)
 {
@@ -49,34 +50,37 @@ void ShowCurrentMenuOption()
 
     switch (currentOption) {
         case 0:
-            snprintf(buf, 128, "(1/10) Godmode: %s", godmode ? "AN" : "AUS");
+            snprintf(buf, 128, "(1/11) Godmode: %s", godmode ? "AN" : "AUS");
             break;
         case 1:
-            snprintf(buf, 128, "(2/10) Super Sprung: %s", superJump ? "AN" : "AUS");
+            snprintf(buf, 128, "(2/11) Super Sprung: %s", superJump ? "AN" : "AUS");
             break;
         case 2:
-            snprintf(buf, 128, "(3/10) Keine Fahndung: %s", neverWanted ? "AN" : "AUS");
+            snprintf(buf, 128, "(3/11) Keine Fahndung: %s", neverWanted ? "AN" : "AUS");
             break;
         case 3:
-            snprintf(buf, 128, "(4/10) Teleport: Wegpunkt");
+            snprintf(buf, 128, "(4/11) Teleport: Wegpunkt");
             break;
         case 4:
-            snprintf(buf, 128, "(5/10) Teleport: Mount Chiliad");
+            snprintf(buf, 128, "(5/11) Teleport: Mount Chiliad");
             break;
         case 5:
-            snprintf(buf, 128, "(6/10) Teleport: Flughafen LS");
+            snprintf(buf, 128, "(6/11) Teleport: Flughafen LS");
             break;
         case 6:
-            snprintf(buf, 128, "(7/10) Geld +10.000.000$");
+            snprintf(buf, 128, "(7/11) Geld +10.000.000$");
             break;
         case 7:
-            snprintf(buf, 128, "(8/10) Alle Waffen geben");
+            snprintf(buf, 128, "(8/11) Set Rank: 999");
             break;
         case 8:
-            snprintf(buf, 128, "(9/10) Fahrzeug: Zentorno spawnen");
+            snprintf(buf, 128, "(9/11) Alle Waffen geben");
             break;
         case 9:
-            snprintf(buf, 128, "(10/10) Men\xC3\xBC schliessen");
+            snprintf(buf, 128, "(10/11) Fahrzeug: Zentorno spawnen");
+            break;
+        case 10:
+            snprintf(buf, 128, "(11/11) Men\xC3\xBC schliessen");
             break;
     }
     ShowNotification(buf);
@@ -85,7 +89,7 @@ void ShowCurrentMenuOption()
 
 int scePadReadState_Hook(int handle, OrbisPadData *pData)
 {
-    int ret = Detour_Execute(&Detour_scePadReadState, int (*)(int, OrbisPadData *), handle, pData);
+    int ret = orig_scePadReadState ? orig_scePadReadState(handle, pData) : -1;
 
     if (ret == 0 && pData && pData->connected)
     {
@@ -144,10 +148,12 @@ int scePadReadState_Hook(int handle, OrbisPadData *pData)
                     } else if (currentOption == 6) {
                         ShowNotification("+10.000.000$ hinzugefuegt! (Test)");
                     } else if (currentOption == 7) {
-                        ShowNotification("Alle Waffen erhalten! (Test)");
+                        ShowNotification("Rank auf 999 gesetzt! (Test)");
                     } else if (currentOption == 8) {
-                        ShowNotification("Zentorno gespawnt! (Test)");
+                        ShowNotification("Alle Waffen erhalten! (Test)");
                     } else if (currentOption == 9) {
+                        ShowNotification("Zentorno gespawnt! (Test)");
+                    } else if (currentOption == 10) {
                         menuOpen = false;
                         ShowNotification("WineBetamen\xC3\xBC: GESCHLOSSEN");
                     }
@@ -176,8 +182,8 @@ int32_t attr_module_hidden module_start(size_t argc, const void *args)
     if (padLib > 0) {
         sceKernelDlsym(padLib, "scePadReadState", &fnPadReadState);
         if (fnPadReadState) {
-            Detour_Construct(&Detour_scePadReadState);
-            Detour_DetourFunction(&Detour_scePadReadState, fnPadReadState, scePadReadState_Hook);
+            Detour_Construct(&Detour_scePadReadState, DetourMode_x64);
+            orig_scePadReadState = (int (*)(int, OrbisPadData *))Detour_DetourFunction(&Detour_scePadReadState, (uint64_t)fnPadReadState, scePadReadState_Hook);
         }
     }
 
