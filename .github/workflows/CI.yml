@@ -37,7 +37,11 @@ jobs:
         echo "OO_PS4_TOOLCHAIN=$GITHUB_WORKSPACE/OpenOrbis/PS4Toolchain" >> $GITHUB_ENV
 
     - name: Download OpenOrbis Toolchain
-      run: curl -sL https://github.com | tar xz -C ./
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh release download --repo illusion0001/OpenOrbis-PS4-Toolchain --pattern "toolchain.tar.gz"
+        tar -xzf toolchain.tar.gz -C ./
 
     - name: Install mini xml
       working-directory: mxml/ps4
@@ -58,4 +62,3 @@ jobs:
         name: ps4-mod-menu
         path: bin/plugins/prx_final/*.prx
         if-no-files-found: error
-
