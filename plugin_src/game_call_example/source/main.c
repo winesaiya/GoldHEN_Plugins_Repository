@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <sys/mman.h>
 
 #include "plugin_common.h"
 #include <orbis/libkernel.h>
@@ -26,11 +27,9 @@ bool neverWanted = false;
 
 #define TOTAL_OPTIONS 11
 
-int (*fnPadOpen)(int userId, int type, int index, void *param) = NULL;
-int (*fnPadClose)(int handle) = NULL;
-int (*fnPadReadState)(int handle, OrbisPadData *data) = NULL;
-int (*fnPadRead)(int handle, OrbisPadData *data, int num) = NULL;
-int (*fnGetInitialUser)(int *userId) = NULL;
+volatile uint32_t g_gameButtons = 0;
+int (*orig_scePadReadState)(int handle, OrbisPadData *pData) = NULL;
+int (*orig_scePadRead)(int handle, OrbisPadData *pData, int num) = NULL;
 
 void ShowNotification(const char *text)
 {
@@ -88,55 +87,67 @@ void ShowCurrentMenuOption()
     free(buf);
 }
 
+int Hooked_scePadReadState(int handle, OrbisPadData *pData)
+{
+    int ret = orig_scePadReadState ? orig_scePadReadState(handle, pData) : -1;
+    if (ret == 0 && pData && pData->connected) {
+        g_gameButtons = pData->buttons;
+    }
+    return ret;
+}
+
+int Hooked_scePadRead(int handle, OrbisPadData *pData, int num)
+{
+    int ret = orig_scePadRead ? orig_scePadRead(handle, pData, num) : -1;
+    if (ret > 0 && pData && pData.connected) {
+        g_gameButtons = pData.buttons;
+    }
+    return ret;
+}
+
+bool PatchGameImport(uint64_t baseAddr, size_t searchSize, void *targetFunc, void *hookFunc)
+{
+    if (!targetFunc || !hookFunc || baseAddr == 0) return false;
+    uint64_t target = (uint64_t)targetFunc;
+    uint64_t *ptr = (uint64_t *)baseAddr;
+    size_t count = searchSize / sizeof(uint64_t);
+
+    for (size_t i = 0; i < count; i++)
+    {
+        if (ptr[i] == target)
+        {
+            uint64_t pageStart = ((uint64_t)&ptr[i]) & ~0x3FFFULL;
+            mprotect((void *)pageStart, 0x4000, PROT_READ | PROT_WRITE);
+            ptr[i] = (uint64_t)hookFunc;
+            return true;
+        }
+    }
+    return false;
+}
+
 void* my_thread(void* args)
 {
     sleep(10);
 
-    int userId = 0xFF;
-    int userLib = sceKernelLoadStartModule("libSceUserService.sprx", 0, NULL, 0, NULL, NULL);
-    if (userLib > 0) {
-        sceKernelDlsym(userLib, "sceUserServiceGetInitialUser", (void**)&fnGetInitialUser);
-        if (fnGetInitialUser) {
-            fnGetInitialUser(&userId);
-        }
-    }
-
     int padLib = sceKernelLoadStartModule("libScePad.sprx", 0, NULL, 0, NULL, NULL);
     if (padLib > 0) {
-        sceKernelDlsym(padLib, "scePadOpen", (void**)&fnPadOpen);
-        sceKernelDlsym(padLib, "scePadClose", (void**)&fnPadClose);
-        sceKernelDlsym(padLib, "scePadReadState", (void**)&fnPadReadState);
-        sceKernelDlsym(padLib, "scePadRead", (void**)&fnPadRead);
+        sceKernelDlsym(padLib, "scePadReadState", (void**)&orig_scePadReadState);
+        sceKernelDlsym(padLib, "scePadRead", (void**)&orig_scePadRead);
     }
 
-    int openedHandle = -1;
-    if (fnPadOpen) {
-        openedHandle = fnPadOpen(userId, 0, 0, NULL);
-        if (openedHandle > 0 && fnPadClose) {
-            fnPadClose(openedHandle);
-        }
+    bool hookedState = PatchGameImport(procInfo.base_address, 0x4500000, (void*)orig_scePadReadState, (void*)Hooked_scePadReadState);
+    bool hookedRead  = PatchGameImport(procInfo.base_address, 0x4500000, (void*)orig_scePadRead, (void*)Hooked_scePadRead);
+
+    char *welcome = (char *)calloc(128, 1);
+    if (welcome) {
+        snprintf(welcome, 128, "Welcome to WineBetamen\xC3\xBC by Winesaiya (Links + Viereck) [%d/%d]", hookedState, hookedRead);
+        ShowNotification(welcome);
+        free(welcome);
     }
-
-    int basePrefix = (openedHandle > 0) ? (openedHandle & 0xFFFF0000) : 0x03000000;
-
-    ShowNotification("Welcome to WineBetamen\xC3\xBC by Winesaiya (Links + Viereck)");
-
-    OrbisPadData padData;
-    memset(&padData, 0, sizeof(padData));
 
     while (true)
     {
-        uint32_t btns = 0;
-
-        for (int offset = 0x0001; offset <= 0x0600; offset++)
-        {
-            int h = basePrefix | offset;
-            if (fnPadReadState && fnPadReadState(h, &padData) == 0 && padData.connected)
-            {
-                btns |= padData.buttons;
-                if (btns != 0) break;
-            }
-        }
+        uint32_t btns = g_gameButtons;
 
         if (btns != 0)
         {
