@@ -251,7 +251,7 @@ bool ResolveEbootBase()
     info.size = sizeof(info);
     if (sceKernelGetModuleInfo(0, &info) != 0) return false;
     if (info.segmentCount == 0) return false;
-    g_ebootBase = (uintptr_t)info.segmentInfo.address;
+        g_ebootBase = (uintptr_t)((*(info.segmentInfo)).address);
     return (g_ebootBase != 0);
 }
 
