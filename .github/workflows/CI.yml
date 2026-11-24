@@ -33,20 +33,19 @@ jobs:
 
     - name: Setup variables
       run: |
-        sudo apt install llvm lld
+        sudo apt-get update && sudo apt-get install -y llvm lld wget
         echo "OO_PS4_TOOLCHAIN=$GITHUB_WORKSPACE/OpenOrbis/PS4Toolchain" >> $GITHUB_ENV
-        echo "commit_ver=1.$(git rev-list HEAD --count)" >> $GITHUB_ENV
-        echo "commit_hash=$(echo ${GITHUB_SHA} | cut -c1-8)" >> $GITHUB_ENV
 
     - name: Download OpenOrbis Toolchain
       run: |
-        wget -q https://github.com -O toolchain.tar.gz
-        tar -xzf toolchain.tar.gz -C ./
+        mkdir -p OpenOrbis
+        wget -q https://github.com -O toolchain.zip
+        unzip -q toolchain.zip -d OpenOrbis
 
     - name: Install mini xml
       working-directory: mxml/ps4
       run: |
-        wget https://githubusercontent.com -O $OO_PS4_TOOLCHAIN/build_rules.mk
+        wget -q https://githubusercontent.com -O $OO_PS4_TOOLCHAIN/build_rules.mk
         make install PRX_BUILD=1
 
     - name: Export path to SDK
