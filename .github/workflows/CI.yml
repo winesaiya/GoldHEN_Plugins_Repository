@@ -154,18 +154,18 @@ jobs:
         echo "\`\`\`" >> hash.md
         echo "" >> hash.md
         echo "</details>" >> hash.md
-
-    - name: Create Release
-      if: github.event_name != 'pull_request'
-      working-directory: bin/plugins
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
+             
+              - name: Create Release
+        if: github.event_name != 'pull_request'
+        working-directory: bin/plugins
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
         tt="${{ env.commit_ver }}-${{ env.commit_hash }}"
-        gh release create $tt ${{ env.ZIP_NAME }}.zip --target ${{ GITHUB.SHA }} -t $tt -F hash.md -p
-              - name: Upload PRX Artifact
+         gh release create $tt ${{ env.ZIP_NAME }} -t "$tt" -n "" || true
+
+         - name: Upload PRX Artifact
         uses: actions/upload-artifact@v4
         with:
           name: mein-mod-menu
-          path: "**/*.prx"
-
+          path: bin/plugins/*.prx
