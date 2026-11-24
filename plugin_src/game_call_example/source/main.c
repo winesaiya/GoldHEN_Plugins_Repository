@@ -35,12 +35,12 @@ typedef struct {
     void *Args;
     uint32_t DataCount;
     uint32_t Pad2;
-    uint8_t Space;
+    uint8_t Space[192];
 } scrNativeCallContext;
 
 typedef void (*RageNativeHandler_t)(scrNativeCallContext *ctx);
 
-uint64_t g_gameBase = 0;
+uintptr_t g_ebootBase = 0;
 Detour Detour_DrawRect;
 bool g_isDrawingOurMenu = false;
 
@@ -51,13 +51,14 @@ uint32_t FloatToU32(float f)
     return u;
 }
 
-void CallNative8(uint64_t offset, uint32_t argCount, uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5, uint64_t a6, uint64_t a7)
+void CallNative9(uint64_t offset, uint32_t argCount, uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5, uint64_t a6, uint64_t a7, uint64_t a8)
 {
-    if (!g_gameBase) return;
-    uint64_t *argBuf = (uint64_t *)calloc(8, sizeof(uint64_t));
+    if (!g_ebootBase) return;
+    uint64_t *argBuf = (uint64_t *)calloc(9, sizeof(uint64_t));
     if (!argBuf) return;
-    *(argBuf + 0) = a0; *(argBuf + 1) = a1; *(argBuf + 2) = a2; *(argBuf + 3) = a3;
-    *(argBuf + 4) = a4; *(argBuf + 5) = a5; *(argBuf + 6) = a6; *(argBuf + 7) = a7;
+    *(argBuf + 0) = a0; *(argBuf + 1) = a1; *(argBuf + 2) = a2;
+    *(argBuf + 3) = a3; *(argBuf + 4) = a4; *(argBuf + 5) = a5;
+    *(argBuf + 6) = a6; *(argBuf + 7) = a7; *(argBuf + 8) = a8;
 
     scrNativeCallContext ctx;
     uint64_t retVal = 0;
@@ -66,11 +67,11 @@ void CallNative8(uint64_t offset, uint32_t argCount, uint64_t a0, uint64_t a1, u
     ctx.ArgCount = argCount;
     ctx.Args = argBuf;
 
-    if (offset == 0xDCCAC0 && Detour_DrawRect.StubPtr) {
+    if (offset == 0x9CCAC0 && Detour_DrawRect.StubPtr) {
         RageNativeHandler_t orig = (RageNativeHandler_t)Detour_DrawRect.StubPtr;
         orig(&ctx);
     } else {
-        RageNativeHandler_t fn = (RageNativeHandler_t)(g_gameBase + offset);
+        RageNativeHandler_t fn = (RageNativeHandler_t)(g_ebootBase + offset);
         fn(&ctx);
     }
     free(argBuf);
@@ -78,17 +79,17 @@ void CallNative8(uint64_t offset, uint32_t argCount, uint64_t a0, uint64_t a1, u
 
 void GTA_DrawRect(float x, float y, float w, float h, int r, int g, int b, int a)
 {
-    CallNative8(0xDCCAC0, 8, FloatToU32(x), FloatToU32(y), FloatToU32(w), FloatToU32(h), (uint64_t)r, (uint64_t)g, (uint64_t)b, (uint64_t)a);
+    CallNative9(0x9CCAC0, 9, FloatToU32(x), FloatToU32(y), FloatToU32(w), FloatToU32(h), (uint64_t)r, (uint64_t)g, (uint64_t)b, (uint64_t)a, 0);
 }
 
 void GTA_DrawText(const char *text, float x, float y, float scale, int font, int r, int g, int b, int a)
 {
-    CallNative8(0xDE19F0, 1, (uint64_t)font, 0, 0, 0, 0, 0, 0, 0);
-    CallNative8(0xDE1890, 2, FloatToU32(scale), FloatToU32(scale), 0, 0, 0, 0, 0, 0);
-    CallNative8(0xDE18F0, 4, (uint64_t)r, (uint64_t)g, (uint64_t)b, (uint64_t)a, 0, 0, 0, 0);
-    CallNative8(0xDE0690, 1, (uint64_t)"STRING", 0, 0, 0, 0, 0, 0, 0);
-    CallNative8(0xDE08F0, 1, (uint64_t)text, 0, 0, 0, 0, 0, 0, 0);
-    CallNative8(0xDE06C0, 3, FloatToU32(x), FloatToU32(y), 0, 0, 0, 0, 0, 0);
+    CallNative9(0x9E19F0, 1, (uint64_t)font, 0, 0, 0, 0, 0, 0, 0, 0);
+    CallNative9(0x9E1890, 2, FloatToU32(scale), FloatToU32(scale), 0, 0, 0, 0, 0, 0, 0);
+    CallNative9(0x9E18F0, 4, (uint64_t)r, (uint64_t)g, (uint64_t)b, (uint64_t)a, 0, 0, 0, 0, 0);
+    CallNative9(0x9E0690, 1, (uint64_t)"STRING", 0, 0, 0, 0, 0, 0, 0, 0);
+    CallNative9(0x9E08F0, 1, (uint64_t)text, 0, 0, 0, 0, 0, 0, 0, 0);
+    CallNative9(0x9E06C0, 3, FloatToU32(x), FloatToU32(y), 0, 0, 0, 0, 0, 0, 0);
 }
 
 int GetOptionCount(int menu)
@@ -115,11 +116,15 @@ void RenderWinesaiyaInGame()
     int total     = GetOptionCount(currentMenu);
     float totalH  = headerH + subH + (total * rowH);
 
+    // Neon-gruener Aussenrahmen
     GTA_DrawRect(menuX, curY + (totalH * 0.5f), menuW + 0.005f, totalH + 0.007f, 57, 255, 20, 255);
+
+    // 1. Header-Banner (Leuchtendes Neon-Gruen + schwarze Schrift WINESAIYA)
     GTA_DrawRect(menuX, curY + (headerH * 0.5f), menuW, headerH, 57, 255, 20, 255);
     GTA_DrawText("WINESAIYA", menuX - (menuW * 0.42f), curY + 0.015f, 0.72f, 1, 10, 10, 10, 255);
     curY += headerH;
 
+    // 2. Subheader (Tiefschwarz + neon-gruene Kategorie & Zaehler)
     GTA_DrawRect(menuX, curY + (subH * 0.5f), menuW, subH, 8, 8, 8, 245);
     const char *cat = (currentMenu == 1) ? "SPIELER" : (currentMenu == 2) ? "TELEPORT" : (currentMenu == 3) ? "GELD & RANK" : (currentMenu == 4) ? "WAFFEN" : (currentMenu == 5) ? "FAHRZEUGE" : "HAUPTMENU";
     GTA_DrawText(cat, menuX - (menuW * 0.46f), curY + 0.005f, 0.36f, 4, 57, 255, 20, 255);
@@ -132,6 +137,7 @@ void RenderWinesaiyaInGame()
     }
     curY += subH;
 
+    // 3. Optionen (Schwarzer Hintergrund, weisse Schrift, neon-gruener Auswahlbalken)
     for (int i = 0; i < total; i++) {
         bool sel = (i == currentOption);
         float rowMidY = curY + (rowH * 0.5f);
@@ -240,6 +246,17 @@ void PatchSafeGOTFast(void *targetFunc, void *hookFunc)
     free(chunk);
 }
 
+bool ResolveEbootBase()
+{
+    OrbisKernelModuleInfo info;
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    if (sceKernelGetModuleInfo(0, &info) != 0) return false;
+    if (info.segmentCount == 0) return false;
+    g_ebootBase = (uintptr_t)info.segmentInfo[0].address;
+    return (g_ebootBase != 0);
+}
+
 void* my_thread(void* args)
 {
     sleep(1);
@@ -257,11 +274,13 @@ void* my_thread(void* args)
 
     sleep(35);
 
-    g_gameBase = procInfo.base_address;
-    Detour_Construct(&Detour_DrawRect, 0);
-    Detour_DetourFunction(&Detour_DrawRect, g_gameBase + 0xDCCAC0, (void*)Hooked_DrawRect);
-
-    ShowPS4Notification("Welcome to Winesaiya!\nDr\xC3\xBC""cke Rechte Pfeiltaste + Viereck zum \xC3\x96""ffnen.");
+    if (ResolveEbootBase()) {
+        Detour_Construct(&Detour_DrawRect, 0);
+        Detour_DetourFunction(&Detour_DrawRect, g_ebootBase + 0x9CCAC0, (void*)Hooked_DrawRect);
+        ShowPS4Notification("Welcome to Winesaiya!\nDr\xC3\xBC""cke Rechte Pfeiltaste + Viereck zum \xC3\x96""ffnen.");
+    } else {
+        ShowPS4Notification("[WINESAIYA] Base-Fehler!");
+    }
 
     while (true) {
         uint32_t btns = g_gameButtons;
