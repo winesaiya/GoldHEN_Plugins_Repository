@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <pthread.h>
 
 #include "plugin_common.h"
 #include <orbis/libkernel.h>
@@ -15,7 +16,6 @@ attr_public uint32_t g_pluginVersion = 0x00000100;
 struct proc_info procInfo;
 bool menuOpen = false;
 
-// Controller-Struktur und Tasten-Codes direkt definiert (kein Makefile-Edit nötig!)
 #define BTN_L1    0x00000400
 #define BTN_RIGHT 0x00000020
 
@@ -47,7 +47,6 @@ void* my_thread(void* args)
 {
     sleep(15);
 
-    // Controller-Bibliothek dynamisch laden
     int padLib = sceKernelLoadStartModule("libScePad.sprx", 0, NULL, 0, NULL, NULL);
     if (padLib > 0) {
         sceKernelDlsym(padLib, "scePadInit", (void**)&fnPadInit);
@@ -68,7 +67,6 @@ void* my_thread(void* args)
     {
         if (padHandle > 0 && fnPadReadState && fnPadReadState(padHandle, &padData) == 0)
         {
-            // Prüft ob L1 UND Pfeil Rechts gleichzeitig gedrückt werden
             bool l1Pressed = (padData.buttons & BTN_L1);
             bool rightPressed = (padData.buttons & BTN_RIGHT);
 
@@ -94,8 +92,8 @@ int32_t attr_module_hidden module_start(size_t argc, const void *args)
     if (sys_sdk_proc_info(&procInfo) != 0) {
         return -1;
     }
-    ScePthread thread;
-    scePthreadCreate(&thread, NULL, my_thread, NULL, "winee_menu_thread");
+    pthread_t thread;
+    pthread_create(&thread, NULL, my_thread, NULL);
     return 0;
 }
 
@@ -103,6 +101,7 @@ int32_t attr_module_hidden module_stop(size_t argc, const void *args)
 {
     return 0;
 }
+
 
 
 
