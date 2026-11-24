@@ -12,7 +12,7 @@
 #include <orbis/Pad.h>
 
 attr_public const char *g_pluginName = "Winesaiya";
-attr_public const char *g_pluginDesc = "Winesaiya Menu";
+attr_public const char *g_pluginDesc = "Winesaiya Neon Menu";
 attr_public const char *g_pluginAuth = "winesaiya";
 attr_public uint32_t g_pluginVersion = 0x00000100;
 
@@ -28,15 +28,24 @@ volatile uint32_t g_gameButtons = 0;
 int (*orig_scePadReadState)(int handle, OrbisPadData *pData) = NULL;
 int (*orig_scePadRead)(int handle, OrbisPadData *pData, int num) = NULL;
 
-void ShowPS4Notification(const char *text)
-{
-    OrbisNotificationRequest req;
-    memset(&req, 0, sizeof(req));
-    req.type = 0;
-    req.targetId = -1;
-    snprintf(req.message, sizeof(req.message), "%s", text);
-    sceKernelSendNotificationRequest(0, &req, sizeof(req), 0);
-}
+// GTA V 1.57 In-Game Grafik-Natives
+typedef void (*fnDrawRect_t)(float x, float y, float w, float h, int r, int g, int b, int a);
+typedef void (*fnSetTextFont_t)(int font);
+typedef void (*fnSetTextScale_t)(float s1, float s2);
+typedef void (*fnSetTextColour_t)(int r, int g, int b, int a);
+typedef void (*fnBeginText_t)(const char *type);
+typedef void (*fnAddTextStr_t)(const char *text);
+typedef void (*fnEndText_t)(float x, float y, int p2);
+
+fnDrawRect_t      GTA_DRAW_RECT = NULL;
+fnSetTextFont_t   GTA_SET_TEXT_FONT = NULL;
+fnSetTextScale_t  GTA_SET_TEXT_SCALE = NULL;
+fnSetTextColour_t GTA_SET_TEXT_COLOUR = NULL;
+fnBeginText_t     GTA_BEGIN_TEXT = NULL;
+fnAddTextStr_t    GTA_ADD_TEXT_STR = NULL;
+fnEndText_t       GTA_END_TEXT = NULL;
+
+Detour Detour_IsDlcPresent;
 
 int GetOptionCount(int menu)
 {
@@ -47,61 +56,111 @@ int GetOptionCount(int menu)
     return 1;
 }
 
-void ShowFullCategoryBox()
+void DrawInGameText(const char *text, float x, float y, float scale, int font, int r, int g, int b, int a)
 {
-    char *box = (char *)calloc(512, 1);
-    if (!box) return;
+    if (!GTA_SET_TEXT_FONT || !GTA_SET_TEXT_SCALE || !GTA_SET_TEXT_COLOUR || !GTA_BEGIN_TEXT || !GTA_ADD_TEXT_STR || !GTA_END_TEXT) return;
+    GTA_SET_TEXT_FONT(font);
+    GTA_SET_TEXT_SCALE(scale, scale);
+    GTA_SET_TEXT_COLOUR(r, g, b, a);
+    GTA_BEGIN_TEXT("STRING");
+    GTA_ADD_TEXT_STR(text);
+    GTA_END_TEXT(x, y, 0);
+}
 
-    if (currentMenu == 0) {
-        snprintf(box, 512,
-            "=== WINESAIYA | HAUPTMEN\xC3\x9C ===\n"
-            "%s Spieler >\n"
-            "%s Teleport >\n"
-            "%s Geld & Rank >\n"
-            "%s Waffen >\n"
-            "%s Fahrzeuge >",
-            (currentOption == 0) ? ">>" : "  ",
-            (currentOption == 1) ? ">>" : "  ",
-            (currentOption == 2) ? ">>" : "  ",
-            (currentOption == 3) ? ">>" : "  ",
-            (currentOption == 4) ? ">>" : "  ");
-    } else if (currentMenu == 1) {
-        snprintf(box, 512,
-            "=== WINESAIYA | SPIELER ===\n"
-            "%s Godmode [%s]\n"
-            "%s Super Sprung [%s]\n"
-            "%s Keine Fahndung [%s]",
-            (currentOption == 0) ? ">>" : "  ", godmode ? "AN" : "AUS",
-            (currentOption == 1) ? ">>" : "  ", superJump ? "AN" : "AUS",
-            (currentOption == 2) ? ">>" : "  ", neverWanted ? "AN" : "AUS");
-    } else if (currentMenu == 2) {
-        snprintf(box, 512,
-            "=== WINESAIYA | TELEPORT ===\n"
-            "%s Wegpunkt\n"
-            "%s Mount Chiliad\n"
-            "%s Flughafen LS",
-            (currentOption == 0) ? ">>" : "  ",
-            (currentOption == 1) ? ">>" : "  ",
-            (currentOption == 2) ? ">>" : "  ");
-    } else if (currentMenu == 3) {
-        snprintf(box, 512,
-            "=== WINESAIYA | GELD & RANK ===\n"
-            "%s Geld +10.000.000$\n"
-            "%s Set Rank: 999",
-            (currentOption == 0) ? ">>" : "  ",
-            (currentOption == 1) ? ">>" : "  ");
-    } else if (currentMenu == 4) {
-        snprintf(box, 512,
-            "=== WINESAIYA | WAFFEN ===\n"
-            ">> Alle Waffen geben");
-    } else {
-        snprintf(box, 512,
-            "=== WINESAIYA | FAHRZEUGE ===\n"
-            ">> Zentorno spawnen");
+void RenderWinesaiyaInGame()
+{
+    if (!menuOpen || !GTA_DRAW_RECT) return;
+
+    float menuX = 0.83f;
+    float menuW = 0.23f;
+    float curY  = 0.14f;
+
+    float headerH = 0.075f;
+    float subH    = 0.034f;
+    float rowH    = 0.036f;
+    int total     = GetOptionCount(currentMenu);
+    float totalH  = headerH + subH + (total * rowH);
+
+    // Neon-gruener Aussenrahmen
+    GTA_DRAW_RECT(menuX, curY + (totalH * 0.5f), menuW + 0.005f, totalH + 0.007f, 57, 255, 20, 255);
+
+    // 1. Header-Banner (Leuchtendes Neon-Gruen + schwarze Schrift WINESAIYA)
+    GTA_DRAW_RECT(menuX, curY + (headerH * 0.5f), menuW, headerH, 57, 255, 20, 255);
+    DrawInGameText("WINESAIYA", menuX - (menuW * 0.42f), curY + 0.015f, 0.72f, 1, 10, 10, 10, 255);
+    curY += headerH;
+
+    // 2. Subheader (Tiefschwarz + neon-gruene Kategorie & Zaehler)
+    GTA_DRAW_RECT(menuX, curY + (subH * 0.5f), menuW, subH, 8, 8, 8, 245);
+    const char *cat = (currentMenu == 1) ? "SPIELER" : (currentMenu == 2) ? "TELEPORT" : (currentMenu == 3) ? "GELD & RANK" : (currentMenu == 4) ? "WAFFEN" : (currentMenu == 5) ? "FAHRZEUGE" : "HAUPTMENU";
+    DrawInGameText(cat, menuX - (menuW * 0.46f), curY + 0.005f, 0.36f, 4, 57, 255, 20, 255);
+
+    char *cnt = (char *)calloc(24, 1);
+    if (cnt) {
+        snprintf(cnt, 24, "%d / %d", currentOption + 1, total);
+        DrawInGameText(cnt, menuX + (menuW * 0.30f), curY + 0.005f, 0.36f, 4, 57, 255, 20, 255);
+        free(cnt);
     }
+    curY += subH;
 
-    ShowPS4Notification(box);
-    free(box);
+    // 3. Zeilen (Schwarzer Hintergrund, weisse Schrift, neon-gruener Auswahlbalken)
+    for (int i = 0; i < total; i++) {
+        bool sel = (i == currentOption);
+        float rowMidY = curY + (rowH * 0.5f);
+
+        if (sel) {
+            GTA_DRAW_RECT(menuX, rowMidY, menuW, rowH, 57, 255, 20, 245);
+        } else {
+            GTA_DRAW_RECT(menuX, rowMidY, menuW, rowH, 12, 12, 12, 225);
+        }
+
+        int tr = sel ? 10 : 255;
+        int tg = sel ? 10 : 255;
+        int tb = sel ? 10 : 255;
+
+        const char *lbl = "", *st = "";
+        if (currentMenu == 0) {
+            if (i == 0) { lbl = "Spieler"; st = ">"; }
+            else if (i == 1) { lbl = "Teleport"; st = ">"; }
+            else if (i == 2) { lbl = "Geld & Rank"; st = ">"; }
+            else if (i == 3) { lbl = "Waffen"; st = ">"; }
+            else { lbl = "Fahrzeuge"; st = ">"; }
+        } else if (currentMenu == 1) {
+            if (i == 0) { lbl = "Godmode"; st = godmode ? "[AN]" : "[AUS]"; }
+            else if (i == 1) { lbl = "Super Sprung"; st = superJump ? "[AN]" : "[AUS]"; }
+            else { lbl = "Keine Fahndung"; st = neverWanted ? "[AN]" : "[AUS]"; }
+        } else if (currentMenu == 2) {
+            lbl = (i == 0) ? "Wegpunkt" : (i == 1) ? "Mount Chiliad" : "Flughafen LS";
+        } else if (currentMenu == 3) {
+            lbl = (i == 0) ? "Geld +10.000.000$" : "Set Rank: 999";
+        } else if (currentMenu == 4) lbl = "Alle Waffen geben";
+        else lbl = "Zentorno spawnen";
+
+        DrawInGameText(lbl, menuX - (menuW * 0.46f), curY + 0.006f, 0.37f, 4, tr, tg, tb, 255);
+        if (st != '\0') {
+            int sr = sel ? 10 : (strstr(st, "AN") ? 57 : 255);
+            int sg = sel ? 10 : (strstr(st, "AN") ? 255 : 255);
+            int sb = sel ? 10 : (strstr(st, "AN") ? 20 : 255);
+            DrawInGameText(st, menuX + (menuW * 0.31f), curY + 0.006f, 0.37f, 4, sr, sg, sb, 255);
+        }
+        curY += rowH;
+    }
+}
+
+bool Hooked_IsDlcPresent(uint32_t dlcHash)
+{
+    RenderWinesaiyaInGame();
+    bool (*orig)(uint32_t) = (bool (*)(uint32_t))Detour_IsDlcPresent.StubPtr;
+    return orig ? orig(dlcHash) : false;
+}
+
+void ShowPS4Notification(const char *text)
+{
+    OrbisNotificationRequest req;
+    memset(&req, 0, sizeof(req));
+    req.type = 0;
+    req.targetId = -1;
+    snprintf(req.message, sizeof(req.message), "%s", text);
+    sceKernelSendNotificationRequest(0, &req, sizeof(req), 0);
 }
 
 int Hooked_scePadReadState(int handle, OrbisPadData *pData)
@@ -162,65 +221,37 @@ void* my_thread(void* args)
     sleep(2);
     ShowPS4Notification("Winesaiya geladen!");
 
-    bool storyHintShown = false;
-    int ticks = 0;
+    // Warte, bis GTA V 1.57 im Story-Modus geladen ist
+    sleep(35);
+
+    uint64_t base = procInfo.base_address;
+    GTA_DRAW_RECT       = (fnDrawRect_t)(base + 0xDCCAC0);
+    GTA_SET_TEXT_SCALE  = (fnSetTextScale_t)(base + 0xDE1890);
+    GTA_SET_TEXT_COLOUR = (fnSetTextColour_t)(base + 0xDE18F0);
+    GTA_SET_TEXT_FONT   = (fnSetTextFont_t)(base + 0xDE19F0);
+    GTA_BEGIN_TEXT      = (fnBeginText_t)(base + 0xDE0690);
+    GTA_END_TEXT        = (fnEndText_t)(base + 0xDE06C0);
+    GTA_ADD_TEXT_STR    = (fnAddTextStr_t)(base + 0xDE08F0);
+
+    Detour_Construct(&Detour_IsDlcPresent);
+    Detour_DetourFunction(&Detour_IsDlcPresent, base + 0xDD2B80, (void*)Hooked_IsDlcPresent);
+
+    ShowPS4Notification("Welcome to Winesaiya!\nDr\xC3\xBC""cke Rechte Pfeiltaste + Viereck zum \xC3\x96""ffnen.");
 
     while (true) {
-        ticks++;
-        if (!storyHintShown && ticks >= 2500) {
-            storyHintShown = true;
-            ShowPS4Notification("Welcome to Winesaiya!\nDr\xC3\xBC""cke Rechte Pfeiltaste + Viereck zum \xC3\x96""ffnen.");
-        }
-
         uint32_t btns = g_gameButtons;
         if (btns != 0) {
             if ((btns & ORBIS_PAD_BUTTON_RIGHT) && (btns & ORBIS_PAD_BUTTON_SQUARE)) {
                 menuOpen = !menuOpen;
-                if (menuOpen) { currentMenu = 0; currentOption = 0; ShowFullCategoryBox(); }
-                else ShowPS4Notification("=== WINESAIYA: GESCHLOSSEN ===");
+                if (menuOpen) { currentMenu = 0; currentOption = 0; }
                 sceKernelUsleep(350000);
             } else if (menuOpen) {
                 int total = GetOptionCount(currentMenu);
-                if (btns & ORBIS_PAD_BUTTON_DOWN) { currentOption = (currentOption + 1) % total; ShowFullCategoryBox(); sceKernelUsleep(220000); }
-                else if (btns & ORBIS_PAD_BUTTON_UP) { currentOption = (currentOption - 1 + total) % total; ShowFullCategoryBox(); sceKernelUsleep(220000); }
+                if (btns & ORBIS_PAD_BUTTON_DOWN) { currentOption = (currentOption + 1) % total; sceKernelUsleep(200000); }
+                else if (btns & ORBIS_PAD_BUTTON_UP) { currentOption = (currentOption - 1 + total) % total; sceKernelUsleep(200000); }
                 else if (btns & ORBIS_PAD_BUTTON_CIRCLE) {
-                    if (currentMenu != 0) { currentMenu = 0; currentOption = 0; ShowFullCategoryBox(); }
-                    else { menuOpen = false; ShowPS4Notification("=== WINESAIYA: GESCHLOSSEN ==="); }
-                    sceKernelUsleep(280000);
+                    if (currentMenu != 0) { currentMenu = 0; currentOption = 0; }
+                    else menuOpen = false;
+                    sceKernelUsleep(250000);
                 } else if (btns & ORBIS_PAD_BUTTON_CROSS) {
-                    if (currentMenu == 0) { currentMenu = currentOption + 1; currentOption = 0; ShowFullCategoryBox(); }
-                    else if (currentMenu == 1) {
-                        if (currentOption == 0) godmode = !godmode;
-                        else if (currentOption == 1) superJump = !superJump;
-                        else neverWanted = !neverWanted;
-                        ShowFullCategoryBox();
-                    } else if (currentMenu == 2) {
-                        if (currentOption == 0) ShowPS4Notification("[WINESAIYA] Teleport: Wegpunkt (Test)");
-                        else if (currentOption == 1) ShowPS4Notification("[WINESAIYA] Teleport: Mount Chiliad (Test)");
-                        else ShowPS4Notification("[WINESAIYA] Teleport: Flughafen LS (Test)");
-                    } else if (currentMenu == 3) {
-                        if (currentOption == 0) ShowPS4Notification("[WINESAIYA] Geld +10.000.000$ (Test)");
-                        else ShowPS4Notification("[WINESAIYA] Set Rank: 999 (Test)");
-                    } else if (currentMenu == 4) ShowPS4Notification("[WINESAIYA] Alle Waffen erhalten (Test)");
-                    else if (currentMenu == 5) ShowPS4Notification("[WINESAIYA] Zentorno gespawnt (Test)");
-                    sceKernelUsleep(280000);
-                }
-            }
-        }
-        sceKernelUsleep(16666);
-    }
-    return NULL;
-}
-
-int32_t attr_module_hidden module_start(size_t argc, const void *args)
-{
-    if (sys_sdk_proc_info(&procInfo) != 0) return -1;
-    pthread_t thread;
-    pthread_create(&thread, NULL, my_thread, NULL);
-    return 0;
-}
-
-int32_t attr_module_hidden module_stop(size_t argc, const void *args)
-{
-    return 0;
-}
+                    if (currentMenu == 0) { currentMenu = currentOption + 1; currentOption = 0; }
