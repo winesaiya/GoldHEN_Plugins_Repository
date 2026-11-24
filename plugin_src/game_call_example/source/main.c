@@ -104,30 +104,43 @@ int Hooked_scePadRead(int handle, OrbisPadData *pData, int num)
     return ret;
 }
 
+bool SafeRead64(uint64_t addr, uint64_t *outVal)
+{
+    struct proc_rw rw;
+    memset(&rw, 0, sizeof(rw));
+    rw.address = addr;
+    rw.data = outVal;
+    rw.length = sizeof(uint64_t);
+    rw.write_flags = 0;
+    return (sys_sdk_proc_rw(&rw) == 0);
+}
+
+bool SafeWrite64(uint64_t addr, uint64_t inVal)
+{
+    struct proc_rw rw;
+    memset(&rw, 0, sizeof(rw));
+    rw.address = addr;
+    rw.data = &inVal;
+    rw.length = sizeof(uint64_t);
+    rw.write_flags = 1;
+    return (sys_sdk_proc_rw(&rw) == 0);
+}
+
 bool PatchSafeGOT(void *targetFunc, void *hookFunc)
 {
-    if (!targetFunc || !hookFunc) return false;
+    if (!targetFunc || !hookFunc || procInfo.base_address == 0) return false;
     uint64_t target = (uint64_t)targetFunc;
     uint64_t hook = (uint64_t)hookFunc;
 
-    for (int s = 0; s < 4; s++)
+    for (uint64_t offset = 0x3500000; offset < 0x5500000; offset += 8)
     {
-        uint64_t segStart = procInfo.segments[s].addr;
-        uint64_t segSize  = procInfo.segments[s].size;
-        if (segStart == 0 || segSize == 0 || segSize > 0x10000000) continue;
-
-        for (uint64_t addr = segStart; addr + 8 <= segStart + segSize; addr += 8)
+        uint64_t addr = procInfo.base_address + offset;
+        uint64_t val = 0;
+        if (SafeRead64(addr, &val) && val == target)
         {
-            uint64_t val = 0;
-            if (sys_sdk_proc_rw(&val, (void *)addr, sizeof(uint64_t), 0) == 0)
+            if (SafeWrite64(addr, hook))
             {
-                if (val == target)
-                {
-                    if (sys_sdk_proc_rw(&hook, (void *)addr, sizeof(uint64_t), 1) == 0)
-                    {
-                        return true;
-                    }
-                }
+                return true;
             }
         }
     }
