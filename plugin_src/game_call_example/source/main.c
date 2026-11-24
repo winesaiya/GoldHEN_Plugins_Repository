@@ -131,8 +131,9 @@ bool PatchSafeGOT(void *targetFunc, void *hookFunc)
     if (!targetFunc || !hookFunc || procInfo.base_address == 0) return false;
     uint64_t target = (uint64_t)targetFunc;
     uint64_t hook = (uint64_t)hookFunc;
+    bool patched = false;
 
-    for (uint64_t offset = 0x3500000; offset < 0x5500000; offset += 8)
+    for (uint64_t offset = 0x0; offset < 0x5500000; offset += 8)
     {
         uint64_t addr = procInfo.base_address + offset;
         uint64_t val = 0;
@@ -140,11 +141,11 @@ bool PatchSafeGOT(void *targetFunc, void *hookFunc)
         {
             if (SafeWrite64(addr, hook))
             {
-                return true;
+                patched = true;
             }
         }
     }
-    return false;
+    return patched;
 }
 
 void* my_thread(void* args)
@@ -162,7 +163,7 @@ void* my_thread(void* args)
 
     char *welcome = (char *)calloc(128, 1);
     if (welcome) {
-        snprintf(welcome, 128, "Welcome to WineBetamen\xC3\xBC by Winesaiya (Links + Viereck) [%d/%d]", hookedState, hookedRead);
+        snprintf(welcome, 128, "Welcome to WineBetamen\xC3\xBC by Winesaiya (Rechts + Viereck) [%d/%d]", hookedState, hookedRead);
         ShowNotification(welcome);
         free(welcome);
     }
@@ -173,13 +174,13 @@ void* my_thread(void* args)
 
         if (btns != 0)
         {
-            bool leftPressed   = (btns & ORBIS_PAD_BUTTON_LEFT);
+            bool rightPressed  = (btns & ORBIS_PAD_BUTTON_RIGHT);
             bool squarePressed = (btns & ORBIS_PAD_BUTTON_SQUARE);
             bool upPressed     = (btns & ORBIS_PAD_BUTTON_UP);
             bool downPressed   = (btns & ORBIS_PAD_BUTTON_DOWN);
             bool crossPressed  = (btns & ORBIS_PAD_BUTTON_CROSS);
 
-            if (leftPressed && squarePressed)
+            if (rightPressed && squarePressed)
             {
                 menuOpen = !menuOpen;
                 if (menuOpen) {
