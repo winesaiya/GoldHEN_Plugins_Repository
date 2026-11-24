@@ -127,7 +127,7 @@ void RenderWinesaiyaInGame()
         else lbl = "Zentorno spawnen";
 
         DrawInGameText(lbl, menuX - (menuW * 0.46f), curY + 0.006f, 0.37f, 4, tr, tg, tb, 255);
-        if (st != '\0') {
+        if (st && st[0] != '\0') {
             int sr = sel ? 10 : (strstr(st, "AN") ? 57 : 255);
             int sg = sel ? 10 : 255;
             int sb = sel ? 10 : (strstr(st, "AN") ? 20 : 255);
@@ -223,7 +223,7 @@ void* my_thread(void* args)
     GTA_END_TEXT        = (fnEndText_t)(base + 0xDE06C0);
     GTA_ADD_TEXT_STR    = (fnAddTextStr_t)(base + 0xDE08F0);
 
-    Detour_Construct(&Detour_IsDlcPresent, DETOUR_MODE_RELATIVE);
+    Detour_Construct(&Detour_IsDlcPresent, 0);
     Detour_DetourFunction(&Detour_IsDlcPresent, base + 0xDD2B80, (void*)Hooked_IsDlcPresent);
 
     ShowPS4Notification("Welcome to Winesaiya!\nDr\xC3\xBC""cke Rechte Pfeiltaste + Viereck zum \xC3\x96""ffnen.");
