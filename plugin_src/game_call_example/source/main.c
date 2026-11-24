@@ -28,6 +28,7 @@ bool neverWanted = false;
 
 int (*fnPadOpen)(int userId, int type, int index, void *param) = NULL;
 int (*fnPadReadState)(int handle, OrbisPadData *data) = NULL;
+int (*fnPadRead)(int handle, OrbisPadData *data, int num) = NULL;
 int (*fnGetInitialUser)(int *userId) = NULL;
 
 void ShowNotification(const char *text)
@@ -103,6 +104,7 @@ void* my_thread(void* args)
     if (padLib > 0) {
         sceKernelDlsym(padLib, "scePadOpen", (void**)&fnPadOpen);
         sceKernelDlsym(padLib, "scePadReadState", (void**)&fnPadReadState);
+        sceKernelDlsym(padLib, "scePadRead", (void**)&fnPadRead);
     }
 
     int openedHandle = -1;
@@ -113,96 +115,110 @@ void* my_thread(void* args)
         }
     }
 
-    ShowNotification("Welcome to WineBetamen\xC3\xBC by Winesaiya (Links + Viereck)");
-
     OrbisPadData padData;
     memset(&padData, 0, sizeof(padData));
 
-    int knownHandles[9] = {
-        openedHandle,
-        0x03000001, 0x03000002, 0x03000003, 0x03000004,
-        0x01000001, 0x01000002, 0x01000003, 0x01000004
-    };
+    int foundHandle = -1;
+    for (int h = 0x03000000; h <= 0x03000030; h++) {
+        if (fnPadReadState && fnPadReadState(h, &padData) == 0 && padData.connected) {
+            foundHandle = h;
+            break;
+        }
+    }
+    if (foundHandle < 0) {
+        for (int h = 0x01000000; h <= 0x01000030; h++) {
+            if (fnPadReadState && fnPadReadState(h, &padData) == 0 && padData.connected) {
+                foundHandle = h;
+                break;
+            }
+        }
+    }
+
+    char *welcome = (char *)calloc(128, 1);
+    if (welcome) {
+        snprintf(welcome, 128, "WineBetamen\xC3\xBC by Winesaiya (O:%x F:%x)", openedHandle, foundHandle);
+        ShowNotification(welcome);
+        free(welcome);
+    }
 
     while (true)
     {
-        if (fnPadReadState)
-        {
-            uint32_t btns = 0;
-            for (int i = 0; i < 9; i++)
-            {
-                int h = knownHandles[i];
-                if (h > 0 && fnPadReadState(h, &padData) == 0 && padData.connected)
-                {
-                    btns |= padData.buttons;
-                }
+        uint32_t btns = 0;
+
+        int activeH = (foundHandle > 0) ? foundHandle : openedHandle;
+        if (activeH > 0) {
+            if (fnPadReadState && fnPadReadState(activeH, &padData) == 0) {
+                btns |= padData.buttons;
             }
+            if (fnPadRead && fnPadRead(activeH, &padData, 1) > 0) {
+                btns |= padData.buttons;
+            }
+        }
 
-            if (btns != 0)
+        if (btns != 0)
+        {
+            bool leftPressed   = (btns & ORBIS_PAD_BUTTON_LEFT);
+            bool squarePressed = (btns & ORBIS_PAD_BUTTON_SQUARE);
+            bool upPressed     = (btns & ORBIS_PAD_BUTTON_UP);
+            bool downPressed   = (btns & ORBIS_PAD_BUTTON_DOWN);
+            bool crossPressed  = (btns & ORBIS_PAD_BUTTON_CROSS);
+
+            if (leftPressed && squarePressed)
             {
-                bool leftPressed   = (btns & ORBIS_PAD_BUTTON_LEFT);
-                bool squarePressed = (btns & ORBIS_PAD_BUTTON_SQUARE);
-                bool upPressed     = (btns & ORBIS_PAD_BUTTON_UP);
-                bool downPressed   = (btns & ORBIS_PAD_BUTTON_DOWN);
-                bool crossPressed  = (btns & ORBIS_PAD_BUTTON_CROSS);
-
-                if (leftPressed && squarePressed)
-                {
-                    menuOpen = !menuOpen;
-                    if (menuOpen) {
-                        ShowCurrentMenuOption();
-                    } else {
-                        ShowNotification("WineBetamen\xC3\xBC: GESCHLOSSEN");
-                    }
-                    sceKernelUsleep(350000);
+                menuOpen = !menuOpen;
+                if (menuOpen) {
+                    ShowCurrentMenuOption();
+                } else {
+                    ShowNotification("WineBetamen\xC3\xBC: GESCHLOSSEN");
                 }
-                else if (menuOpen)
+                sceKernelUsleep(350000);
+            }
+            else if (menuOpen)
+            {
+                if (downPressed)
                 {
-                    if (downPressed)
-                    {
-                        currentOption = (currentOption + 1) % TOTAL_OPTIONS;
+                    currentOption = (currentOption + 1) % TOTAL_OPTIONS;
+                    ShowCurrentMenuOption();
+                    sceKernelUsleep(250000);
+                }
+                else if (upPressed)
+                {
+                    currentOption = (currentOption - 1 + TOTAL_OPTIONS) % TOTAL_OPTIONS;
+                    ShowCurrentMenuOption();
+                    sceKernelUsleep(250000);
+                }
+                else if (crossPressed)
+                {
+                    if (currentOption == 0) {
+                        godmode = !godmode;
                         ShowCurrentMenuOption();
-                        sceKernelUsleep(250000);
-                    }
-                    else if (upPressed)
-                    {
-                        currentOption = (currentOption - 1 + TOTAL_OPTIONS) % TOTAL_OPTIONS;
+                    } else if (currentOption == 1) {
+                        superJump = !superJump;
                         ShowCurrentMenuOption();
-                        sceKernelUsleep(250000);
+                    } else if (currentOption == 2) {
+                        neverWanted = !neverWanted;
+                        ShowCurrentMenuOption();
+                    } else if (currentOption == 3) {
+                        ShowNotification("Teleportiert zum Wegpunkt! (Test)");
+                    } else if (currentOption == 4) {
+                        ShowNotification("Teleportiert zum Mount Chiliad! (Test)");
+                    } else if (currentOption == 5) {
+                        ShowNotification("Teleportiert zum Flughafen LS! (Test)");
+                    } else if (currentOption == 6) {
+                        ShowNotification("+10.000.000$ hinzugefuegt! (Test)");
+                    } else if (currentOption == 7) {
+                        ShowNotification("Rank auf 999 gesetzt! (Test)");
+                    } else if (currentOption == 8) {
+                        ShowNotification("Alle Waffen erhalten! (Test)");
+                    } else if (currentOption == 9) {
+                        ShowNotification("Zentorno gespawnt! (Test)");
+                    } else if (currentOption == 10) {
+                        menuOpen = false;
+                        ShowNotification("WineBetamen\xC3\xBC: GESCHLOSSEN");
+                        sceKernelUsleep(350000);
+                        continue;
                     }
-                    else if (crossPressed)
-                    {
-                        if (currentOption == 0) {
-                            godmode = !godmode;
-                            ShowCurrentMenuOption();
-                        } else if (currentOption == 1) {
-                            superJump = !superJump;
-                            ShowCurrentMenuOption();
-                        } else if (currentOption == 2) {
-                            neverWanted = !neverWanted;
-                            ShowCurrentMenuOption();
-                        } else if (currentOption == 3) {
-                            ShowNotification("Teleportiert zum Wegpunkt! (Test)");
-                        } else if (currentOption == 4) {
-                            ShowNotification("Teleportiert zum Mount Chiliad! (Test)");
-                        } else if (currentOption == 5) {
-                            ShowNotification("Teleportiert zum Flughafen LS! (Test)");
-                        } else if (currentOption == 6) {
-                            ShowNotification("+10.000.000$ hinzugefuegt! (Test)");
-                        } else if (currentOption == 7) {
-                            ShowNotification("Rank auf 999 gesetzt! (Test)");
-                        } else if (currentOption == 8) {
-                            ShowNotification("Alle Waffen erhalten! (Test)");
-                        } else if (currentOption == 9) {
-                            ShowNotification("Zentorno gespawnt! (Test)");
-                        } else if (currentOption == 10) {
-                            menuOpen = false;
-                            ShowNotification("WineBetamen\xC3\xBC: GESCHLOSSEN");
-                            sceKernelUsleep(350000);
-                            continue;
-                        }
-                        sceKernelUsleep(280000);
-                    }
+                    sceKernelUsleep(280000);
                 }
             }
         }
