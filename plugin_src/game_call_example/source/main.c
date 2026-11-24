@@ -240,3 +240,79 @@ void* my_thread(void* args)
     }
     int vidLib = sceKernelLoadStartModule("libSceVideoOut.sprx", 0, NULL, 0, NULL, NULL);
     if (vidLib > 0) {
+        sceKernelDlsym(vidLib, "sceVideoOutRegisterBuffers", (void**)&orig_sceVideoOutRegisterBuffers);
+        sceKernelDlsym(vidLib, "sceVideoOutSubmitFlip", (void**)&orig_sceVideoOutSubmitFlip);
+    }
+
+    PatchSafeGOTFast((void*)orig_scePadReadState, (void*)Hooked_scePadReadState);
+    PatchSafeGOTFast((void*)orig_scePadRead, (void*)Hooked_scePadRead);
+    PatchSafeGOTFast((void*)orig_sceVideoOutRegisterBuffers, (void*)Hooked_sceVideoOutRegisterBuffers);
+    PatchSafeGOTFast((void*)orig_sceVideoOutSubmitFlip, (void*)Hooked_sceVideoOutSubmitFlip);
+
+    sleep(2);
+    ShowPS4Notification("Winesaiya geladen!");
+
+    bool storyHintShown = false;
+    int ticks = 0;
+
+    while (true) {
+        ticks++;
+        if (!storyHintShown && ticks >= 2500) {
+            storyHintShown = true;
+            ShowPS4Notification("Welcome to Winesaiya!\nDr\xC3\xBC""cke Rechte Pfeiltaste + Viereck zum \xC3\x96""ffnen.");
+        }
+
+        uint32_t btns = g_gameButtons;
+        if (btns != 0) {
+            if ((btns & ORBIS_PAD_BUTTON_RIGHT) && (btns & ORBIS_PAD_BUTTON_SQUARE)) {
+                menuOpen = !menuOpen;
+                if (menuOpen) {
+                    currentMenu = 0; currentOption = 0;
+                    if (!g_fbAddresses || !g_fbAddresses[0]) ShowPS4Notification("[WINESAIYA] Ge\xC3\xB6""ffnet (Kein FB)");
+                }
+                sceKernelUsleep(350000);
+            } else if (menuOpen) {
+                int total = GetOptionCount(currentMenu);
+                if (btns & ORBIS_PAD_BUTTON_DOWN) { currentOption = (currentOption + 1) % total; sceKernelUsleep(200000); }
+                else if (btns & ORBIS_PAD_BUTTON_UP) { currentOption = (currentOption - 1 + total) % total; sceKernelUsleep(200000); }
+                else if (btns & ORBIS_PAD_BUTTON_CIRCLE) {
+                    if (currentMenu != 0) { currentMenu = 0; currentOption = 0; }
+                    else menuOpen = false;
+                    sceKernelUsleep(250000);
+                } else if (btns & ORBIS_PAD_BUTTON_CROSS) {
+                    if (currentMenu == 0) { currentMenu = currentOption + 1; currentOption = 0; }
+                    else if (currentMenu == 1) {
+                        if (currentOption == 0) godmode = !godmode;
+                        else if (currentOption == 1) superJump = !superJump;
+                        else neverWanted = !neverWanted;
+                    } else if (currentMenu == 2) {
+                        if (currentOption == 0) ShowPS4Notification("[WINESAIYA] Teleport: Wegpunkt (Test)");
+                        else if (currentOption == 1) ShowPS4Notification("[WINESAIYA] Teleport: Mount Chiliad (Test)");
+                        else ShowPS4Notification("[WINESAIYA] Teleport: Flughafen LS (Test)");
+                    } else if (currentMenu == 3) {
+                        if (currentOption == 0) ShowPS4Notification("[WINESAIYA] Geld +10.000.000$ (Test)");
+                        else ShowPS4Notification("[WINESAIYA] Set Rank: 999 (Test)");
+                    } else if (currentMenu == 4) ShowPS4Notification("[WINESAIYA] Alle Waffen erhalten (Test)");
+                    else if (currentMenu == 5) ShowPS4Notification("[WINESAIYA] Zentorno gespawnt (Test)");
+                    sceKernelUsleep(250000);
+                }
+            }
+        }
+        sceKernelUsleep(16666);
+    }
+    return NULL;
+}
+
+int32_t attr_module_hidden module_start(size_t argc, const void *args)
+{
+    if (sys_sdk_proc_info(&procInfo) != 0) return -1;
+    g_fbAddresses = (void **)calloc(16, sizeof(void *));
+    pthread_t thread;
+    pthread_create(&thread, NULL, my_thread, NULL);
+    return 0;
+}
+
+int32_t attr_module_hidden module_stop(size_t argc, const void *args)
+{
+    return 0;
+}
