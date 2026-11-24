@@ -31,21 +31,18 @@ jobs:
         ref: clang-14
         path: mxml
 
-    - name: Checkout OpenOrbis Toolchain
-      uses: actions/checkout@main
-      with:
-        repository: OpenOrbis/OpenOrbis-PS4-Toolchain
-        path: OpenOrbis
-
     - name: Setup variables
       run: |
-        sudo apt-get update && sudo apt-get install -y llvm lld wget
+        sudo apt-get update && sudo apt-get install -y llvm lld
         echo "OO_PS4_TOOLCHAIN=$GITHUB_WORKSPACE/OpenOrbis/PS4Toolchain" >> $GITHUB_ENV
+
+    - name: Download OpenOrbis Toolchain
+      run: curl -sL https://github.com | tar xz -C ./
 
     - name: Install mini xml
       working-directory: mxml/ps4
       run: |
-        wget -q https://githubusercontent.com -O $OO_PS4_TOOLCHAIN/build_rules.mk
+        wget https://githubusercontent.com -O $OO_PS4_TOOLCHAIN/build_rules.mk
         make install PRX_BUILD=1
 
     - name: Export path to SDK
@@ -55,8 +52,9 @@ jobs:
     - name: Build (Release)
       run: make
 
-    - name: Upload PRX
+    - name: Upload modules (Release prx)
       uses: actions/upload-artifact@v4
       with:
         name: ps4-mod-menu
         path: bin/plugins/prx_final/*.prx
+        if-no-files-found: error
