@@ -27,6 +27,7 @@ bool neverWanted = false;
 #define TOTAL_OPTIONS 11
 
 int (*fnPadOpen)(int userId, int type, int index, void *param) = NULL;
+int (*fnPadClose)(int handle) = NULL;
 int (*fnPadReadState)(int handle, OrbisPadData *data) = NULL;
 int (*fnPadRead)(int handle, OrbisPadData *data, int num) = NULL;
 int (*fnGetInitialUser)(int *userId) = NULL;
@@ -103,6 +104,7 @@ void* my_thread(void* args)
     int padLib = sceKernelLoadStartModule("libScePad.sprx", 0, NULL, 0, NULL, NULL);
     if (padLib > 0) {
         sceKernelDlsym(padLib, "scePadOpen", (void**)&fnPadOpen);
+        sceKernelDlsym(padLib, "scePadClose", (void**)&fnPadClose);
         sceKernelDlsym(padLib, "scePadReadState", (void**)&fnPadReadState);
         sceKernelDlsym(padLib, "scePadRead", (void**)&fnPadRead);
     }
@@ -110,48 +112,29 @@ void* my_thread(void* args)
     int openedHandle = -1;
     if (fnPadOpen) {
         openedHandle = fnPadOpen(userId, 0, 0, NULL);
-        if (openedHandle < 0) {
-            openedHandle = fnPadOpen(userId, 2, 0, NULL);
+        if (openedHandle > 0 && fnPadClose) {
+            fnPadClose(openedHandle);
         }
     }
+
+    int basePrefix = (openedHandle > 0) ? (openedHandle & 0xFFFF0000) : 0x03000000;
+
+    ShowNotification("Welcome to WineBetamen\xC3\xBC by Winesaiya (Links + Viereck)");
 
     OrbisPadData padData;
     memset(&padData, 0, sizeof(padData));
-
-    int foundHandle = -1;
-    for (int h = 0x03000000; h <= 0x03000030; h++) {
-        if (fnPadReadState && fnPadReadState(h, &padData) == 0 && padData.connected) {
-            foundHandle = h;
-            break;
-        }
-    }
-    if (foundHandle < 0) {
-        for (int h = 0x01000000; h <= 0x01000030; h++) {
-            if (fnPadReadState && fnPadReadState(h, &padData) == 0 && padData.connected) {
-                foundHandle = h;
-                break;
-            }
-        }
-    }
-
-    char *welcome = (char *)calloc(128, 1);
-    if (welcome) {
-        snprintf(welcome, 128, "WineBetamen\xC3\xBC by Winesaiya (O:%x F:%x)", openedHandle, foundHandle);
-        ShowNotification(welcome);
-        free(welcome);
-    }
 
     while (true)
     {
         uint32_t btns = 0;
 
-        int activeH = (foundHandle > 0) ? foundHandle : openedHandle;
-        if (activeH > 0) {
-            if (fnPadReadState && fnPadReadState(activeH, &padData) == 0) {
+        for (int offset = 0x0001; offset <= 0x0600; offset++)
+        {
+            int h = basePrefix | offset;
+            if (fnPadReadState && fnPadReadState(h, &padData) == 0 && padData.connected)
+            {
                 btns |= padData.buttons;
-            }
-            if (fnPadRead && fnPadRead(activeH, &padData, 1) > 0) {
-                btns |= padData.buttons;
+                if (btns != 0) break;
             }
         }
 
