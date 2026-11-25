@@ -30,13 +30,20 @@ int (*orig_scePadReadState)(int handle, OrbisPadData *pData) = NULL;
 int (*orig_scePadRead)(int handle, OrbisPadData *pData, int num) = NULL;
 
 typedef struct {
-    void *ReturnValue;
-    uint32_t ArgCount;
-    uint32_t Pad1;
-    void *Args;
-    uint32_t DataCount;
-    uint32_t Pad2;
-    uint8_t Space;
+    void *m_return_data;
+    uint32_t m_argument_count;
+    uint32_t _pad1;
+    void *m_argument_data;
+    uint32_t m_data_count;
+    uint32_t _pad2;
+    uint64_t m_script_vectors_0;
+    uint64_t m_script_vectors_1;
+    uint64_t m_script_vectors_2;
+    uint64_t m_script_vectors_3;
+    float m_result_vectors_0_x, m_result_vectors_0_y, m_result_vectors_0_z, m_result_vectors_0_w;
+    float m_result_vectors_1_x, m_result_vectors_1_y, m_result_vectors_1_z, m_result_vectors_1_w;
+    float m_result_vectors_2_x, m_result_vectors_2_y, m_result_vectors_2_z, m_result_vectors_2_w;
+    float m_result_vectors_3_x, m_result_vectors_3_y, m_result_vectors_3_z, m_result_vectors_3_w;
 } scrNativeCallContext;
 
 typedef int64_t (*RageNativeFn_t)(scrNativeCallContext *ctx);
@@ -55,21 +62,30 @@ uint32_t FloatToU32(float f)
 void CallNative9(uint64_t offset, uint32_t argCount, uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5, uint64_t a6, uint64_t a7, uint64_t a8)
 {
     if (!g_ebootBase) return;
-    uint64_t *argBuf = (uint64_t *)calloc(9, sizeof(uint64_t));
-    if (!argBuf) return;
+    uint64_t *argBuf = (uint64_t *)calloc(16, sizeof(uint64_t));
+    uint64_t *retBuf = (uint64_t *)calloc(8, sizeof(uint64_t));
+    scrNativeCallContext *ctx = (scrNativeCallContext *)calloc(1, sizeof(scrNativeCallContext) + 64);
+    if (!argBuf || !retBuf || !ctx) {
+        if (argBuf) free(argBuf);
+        if (retBuf) free(retBuf);
+        if (ctx) free(ctx);
+        return;
+    }
+
     *(argBuf + 0) = a0; *(argBuf + 1) = a1; *(argBuf + 2) = a2;
     *(argBuf + 3) = a3; *(argBuf + 4) = a4; *(argBuf + 5) = a5;
     *(argBuf + 6) = a6; *(argBuf + 7) = a7; *(argBuf + 8) = a8;
 
-    scrNativeCallContext ctx;
-    uint64_t retVal = 0;
-    memset(&ctx, 0, sizeof(ctx));
-    ctx.ReturnValue = &retVal;
-    ctx.ArgCount = argCount;
-    ctx.Args = argBuf;
+    ctx->m_return_data = retBuf;
+    ctx->m_argument_count = argCount;
+    ctx->m_argument_data = argBuf;
+    ctx->m_data_count = 0;
 
     RageNativeFn_t fn = (RageNativeFn_t)(g_ebootBase + offset);
-    fn(&ctx);
+    fn(ctx);
+
+    free(ctx);
+    free(retBuf);
     free(argBuf);
 }
 
@@ -237,7 +253,7 @@ void PatchSafeGOTFast(void *targetFunc, void *hookFunc)
         rw.address = base; rw.data = chunk; rw.length = chunkSize; rw.write_flags = 0;
         if (sys_sdk_proc_rw(&rw) == 0) {
             for (size_t i = 0; i < (chunkSize / 8); i++) {
-                if (chunk[i] == target) SafeWrite64(base + i * 8, hook);
+                if (*(chunk + i) == target) SafeWrite64(base + i * 8, hook);
             }
         }
     }
@@ -251,7 +267,7 @@ bool ResolveEbootBase()
     info.size = sizeof(info);
     if (sceKernelGetModuleInfo(0, &info) != 0) return false;
     if (info.segmentCount == 0) return false;
-        g_ebootBase = (uintptr_t)((*(info.segmentInfo)).address);
+    g_ebootBase = (uintptr_t)((*(info.segmentInfo)).address);
     return (g_ebootBase != 0);
 }
 
